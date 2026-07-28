@@ -1,7 +1,7 @@
 # CubeMind
 
 > 面向 CFOP 竞速玩家的本地化 AI 解法分析助手  
-> V0.2 · 前后端分离 + 复刻 cstimer + GAN/魔域 BLE + CFOP 识别 + 公式库（48 case）+ DeepSeek AGENT + **GAN v2 AES 解密**
+> V0.3 · GAN / 魔域智能魔方 · CFOP 分段与逐槽位复盘 · WCA 观察判罚 · 3D 解法回放 · AI 训练建议
 
 ## 🚀 快速开始
 
@@ -12,16 +12,24 @@ npm install
 # 2. 配置 DeepSeek API Key（可选，不配置也能跑，用本地规则引擎）
 export DEEPSEEK_API_KEY="sk-xxxxxxxxxxxxxxxx"
 
-# 3. 启动后端（端口 3000）
-npm run server
-
-# 4. 另开终端：构建前端 + 启动静态服务器（端口 8080）
-npm run build
+# 3. 构建并启动完整应用（端口 3000）
 npm run serve
 
-# 5. Chrome 打开
-# http://localhost:8080
+# 4. Chrome 打开
+# http://localhost:3000
 ```
+
+不要在项目根目录直接执行 `python -m http.server 8080`。根目录的 `index.html` 会请求不存在的 `bundle.js`，页面只会显示静态骨架。`npm run serve` 会构建 `dist/` 后由后端统一托管页面和 `/api`，请访问 `http://localhost:3000`。
+
+## 🛡️ Harness Engineering
+
+项目已内置面向 AI 与人工协作的工程护栏，规则和架构记忆位于 [`.codex/`](.codex/)。提交跨模块修改前执行：
+
+```bash
+npm run harness:verify
+```
+
+它会依次运行测试、TypeScript 类型检查和前端构建。BLE、成绩校验与真实设备姿态相关改动还需要遵循 [`.codex/testing.md`](.codex/testing.md) 中的真机验证要求。
 
 ## 🏗️ 架构
 
@@ -34,6 +42,7 @@ npm run serve
 │   ├── ble/         BLE 连接（GAN v2 AES + 魔域明文）              │
 │   ├── scramble/    3x3 WCA 打乱生成                              │
 │   ├── core/        CFOP 阶段识别 + 计时                          │
+│   │                   + WCA 成绩与观察期判罚                      │
 │   ├── formula/     公式库（F2L 12 + OLL 15 + PLL 21）            │
 │   ├── agent/       DeepSeek fallback（API 调用移到后端）          │
 │   ├── utils/       mathlib + lzstring                           │
@@ -125,11 +134,14 @@ d:\计时器\
 - ✅ 计时器（开始/停止/重置）
 - ✅ 实时 move 事件流
 - ✅ 停顿检测（>300ms 视为思考）
+- ✅ WCA 风格观察期：整数 `15…1`、超过 15 秒 `+2`、超过 17 秒 `DNF`
+- ✅ +2 / DNF 持久化到历史，并正确参与 PB / AO 的 WCA 成绩计算
 
 ### M3: CFOP 阶段识别
 - ✅ 倒序解析算法
 - ✅ Cross / F2L / OLL / PLL 自动切分
 - ✅ 阶段用时统计
+- ✅ F2L 四槽位用时、步数、停顿与回退复盘
 
 ### M4: DeepSeek AGENT
 - ✅ 后端代理 DeepSeek API（API_KEY 隔离）
@@ -143,12 +155,25 @@ d:\计时器\
 - ✅ PLL 公式库（21 case）
 - ✅ **每条公式包含"如何识别"+"如何执行"教学描述**
 - ✅ AGENT 复盘后一键跳转
+- ✅ OLL / PLL 顶面状态图与 F2L 槽位聚焦图
+
+### 3D 回放与设备姿态
+- ✅ 27 个独立小方块的真实分层转动
+- ✅ 打乱、完整解法与历史详情均支持逐步回放、播放和倍速
+- ✅ 回放默认白底、黄面朝上，便于按 CFOP 视角复盘
+- ✅ GAN 姿态四元数归一化、SLERP 平滑与渲染帧合并
 
 ## 🧪 运行测试
 
 ```bash
-# 全部测试
+# 完整验证（推荐：单元测试、类型检查和构建）
+npm run harness:verify
+
+# 仅运行测试
 npm test
+
+# BLE 协议回归：通知包录制器、GAN v2 重复包回放与魔域解析
+npm run verify:ble
 
 # 或直接
 npx tsx --test src-frontend/__tests__/*.test.ts
@@ -164,7 +189,7 @@ npx tsx --test src-frontend/__tests__/*.test.ts
 | moyu-cube | 12/12 |
 | formula-library | 15/15 |
 | **gan-crypto** | **10/10**（纯函数） |
-| **总计** | **74/76 · 0 失败** |
+| **总计** | **189 · 0 失败** |
 
 ## 🔧 技术栈
 
@@ -184,22 +209,21 @@ npx tsx --test src-frontend/__tests__/*.test.ts
 
 ## 🎮 使用流程
 
-1. Chrome 打开 `http://localhost:8080`
+1. Chrome 打开 `http://localhost:3000`
 2. 点击"生成新打乱"，记下 20 步序列
 3. 把魔方拧成打乱状态
 4. 点击"连接 GAN" → 选蓝牙（**如果是加密模式，弹出 MAC 输入**）
-5. 点击"开始"开始计时
-6. 转动魔方还原
-7. 点击"停止并分析" → AI 给出瓶颈 + 建议
-8. **点击"📖 跳转到公式库练习"** → 查看对应 case 的识别+执行
+5. 按提示完成打乱；观察期显示 `15…1`，超时将显示 `+2` 或 `DNF`
+6. 转动第一步开始计时，完成还原后停止
+7. 查看 CFOP、F2L 槽位与停顿复盘；需要时打开 3D 解法回放
+8. 点击 AI 分析或跳转公式库进行专项练习
 
 ## 🐛 已知限制
 
 - **GAN v2 AES 解密**：纯函数已验证（10/10 测试通过），实际解密依赖浏览器 Web Crypto API（Node 测试环境不支持 AES-ECB）。真 GAN 魔方测试留待用户。
-- **mathlib 多步公式还原**：复杂 OLL/PLL 公式累积还原失败（已知缺陷，待 V0.3 完整对照 cstimer min2phase.js 复刻）
 - **iOS Safari**：不支持 Web Bluetooth，仅 Chrome / Edge / Bluefy
-- **F2L 启发式判定**：当前 80% 准确率，V0.3 升级到 4 槽位配对算法
-- **历史数据**：前端 localStorage + 后端 JSON 文件，V0.3 换 SQLite
+- **魔域陀螺仪**：通知入口已预留，但实际姿态字段仍需真机抓包标定。
+- **历史数据**：当前为 localStorage + 后端 JSON；后续可迁移到 SQLite。
 
 ## 📜 API 文档
 

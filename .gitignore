@@ -1,0 +1,23 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+!.env.example
+src-backend/data/history.json
+src-backend/data/diagnostics.jsonl
+__pycache__/
+*.py[cod]
+
+# 产品、技术、开发与缺陷文档均为本地知识库，不随发布仓库提交。
+doc/
+
+# 回归测试源码不纳入发布仓库
+**/*.test.ts
+tests-runner/
+
+# Windows 某些 npm / shell 环境误写入工作区的系统占位目录，不属于项目文件。
+%SystemDrive%/
+
+# cstimer 仅作为本地查阅参考，不随 CubeMind 发布。
+cstimer/
