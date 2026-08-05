@@ -3,6 +3,8 @@
  * 默认关闭且仅保存在内存中，避免真实设备数据在未确认时被持久化。
  */
 
+import type { CubePacketProtocol } from "./cube-driver.ts";
+
 export const BlePacketProtocol = {
   GanV2: "gan-v2",
   GanV4: "gan-v4",
@@ -10,17 +12,28 @@ export const BlePacketProtocol = {
   Moyu32: "moyu32",
 } as const;
 
-export type BlePacketProtocol = typeof BlePacketProtocol[keyof typeof BlePacketProtocol];
+export type BlePacketProtocol = CubePacketProtocol;
 
 export interface BlePacketRecord {
   protocol: BlePacketProtocol;
   receivedAt: number;
   bytes: number[];
+  decodedBytes?: number[];
+  mode?: number;
 }
 
 export interface BlePacketFixture {
   schemaVersion: 1;
   packets: BlePacketRecord[];
+}
+
+function copyBytes(bytes: readonly number[] | Uint8Array, label: string): number[] {
+  return Array.from(bytes, (byte) => {
+    if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
+      throw new Error(`[ble-packet-harness] 非法${label}: ${byte}`);
+    }
+    return byte;
+  });
 }
 
 /**
@@ -47,23 +60,47 @@ export class BlePacketRecorder {
     this.enabled = false;
   }
 
-  record(protocol: BlePacketProtocol, bytes: readonly number[] | Uint8Array, receivedAt: number): void {
+  record(
+    protocol: BlePacketProtocol,
+    bytes: readonly number[] | Uint8Array,
+    receivedAt: number,
+    decodedBytes?: readonly number[] | Uint8Array,
+    mode?: number,
+  ): void {
     if (!this.enabled) return;
     if (!Number.isFinite(receivedAt)) {
       throw new Error(`[ble-packet-harness] 非法接收时间: ${receivedAt}`);
     }
-    const copiedBytes = Array.from(bytes, (byte) => {
-      if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
-        throw new Error(`[ble-packet-harness] 非法字节: ${byte}`);
-      }
-      return byte;
-    });
-    this.records.push({ protocol, receivedAt, bytes: copiedBytes });
+    if (mode !== undefined && (!Number.isInteger(mode) || mode < 0 || mode > 0xff)) {
+      throw new Error(`[ble-packet-harness] 非法包模式: ${mode}`);
+    }
+    const record: BlePacketRecord = {
+      protocol,
+      receivedAt,
+      bytes: copyBytes(bytes, "字节"),
+    };
+    if (decodedBytes !== undefined) record.decodedBytes = copyBytes(decodedBytes, "解密字节");
+    if (mode !== undefined) record.mode = mode;
+    this.records.push(record);
     if (this.records.length > this.maxRecords) this.records.shift();
   }
 
+  annotateLast(decodedBytes: readonly number[] | Uint8Array, mode?: number): void {
+    if (!this.enabled || this.records.length === 0) return;
+    if (mode !== undefined && (!Number.isInteger(mode) || mode < 0 || mode > 0xff)) {
+      throw new Error(`[ble-packet-harness] 非法包模式: ${mode}`);
+    }
+    const record = this.records[this.records.length - 1];
+    record.decodedBytes = copyBytes(decodedBytes, "解密字节");
+    if (mode !== undefined) record.mode = mode;
+  }
+
   getRecords(): BlePacketRecord[] {
-    return this.records.map((record) => ({ ...record, bytes: [...record.bytes] }));
+    return this.records.map((record) => ({
+      ...record,
+      bytes: [...record.bytes],
+      ...(record.decodedBytes ? { decodedBytes: [...record.decodedBytes] } : {}),
+    }));
   }
 
   exportFixture(): string {

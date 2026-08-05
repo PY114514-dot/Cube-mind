@@ -16,6 +16,7 @@ export interface InspectionOutcome {
 export function getInspectionOutcome(elapsedMs: number, inspectionSeconds: number): InspectionOutcome {
   const limitMs = Math.max(0, inspectionSeconds) * 1_000;
   if (elapsedMs > limitMs + WCA_PLUS_TWO_WINDOW_MS) return { penalty: "dnf", display: "DNF" };
-  if (elapsedMs >= limitMs) return { penalty: elapsedMs > limitMs ? "plus2" : "none", display: "+2" };
+  if (elapsedMs > limitMs) return { penalty: "plus2", display: "+2" };
+  if (elapsedMs === limitMs) return { penalty: "none", display: "0" };
   return { penalty: "none", display: String(Math.max(0, Math.ceil((limitMs - elapsedMs) / 1_000))) };
 }

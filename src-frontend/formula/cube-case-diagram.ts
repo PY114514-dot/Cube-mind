@@ -2,6 +2,7 @@
 
 export type CubeFace = "U" | "R" | "F" | "D" | "L" | "B";
 export type FormulaTopViewCategory = "OLL" | "PLL";
+export type F2LTargetSlot = "right" | "left";
 
 interface StickerPosition {
   x: number;
@@ -63,6 +64,37 @@ export function getUnsolvedCubieFaceletIndexes(facelets: string[]): Set<number> 
 }
 
 /**
+ * 找到 F2L 目标槽位对应的角块和棱块。公式库的 case 图只高亮这两颗，
+ * 其它前两层块使用统一的中性灰，避免把“所有未归位块”误认为目标。
+ */
+export function getF2LFocusFaceletIndexes(facelets: string[], targetSlot: F2LTargetSlot = "right"): Set<number> {
+  const cornerColors = targetSlot === "left" ? ["D", "F", "L"] : ["D", "F", "R"];
+  const edgeColors = targetSlot === "left" ? ["F", "L"] : ["F", "R"];
+  const focus = new Set<number>();
+  const groups = getCubieFaceletGroups();
+  const corner = groups.find((indexes) => indexes.length === 3 && containsColors(facelets, indexes, cornerColors));
+  const edge = groups.find((indexes) => indexes.length === 2 && containsColors(facelets, indexes, edgeColors));
+  corner?.forEach((index) => focus.add(index));
+  edge?.forEach((index) => focus.add(index));
+  return focus;
+}
+
+/**
+ * F2L case 图的中性贴纸集合：中心保留面色，黄色层和非目标小块都使用
+ * 深灰实体色。这里不使用 blur/filter，缩放或拖动时不会出现虚化边缘。
+ */
+export function getF2LNeutralFaceletIndexes(facelets: string[], focusFacelets: Set<number>): Set<number> {
+  const neutral = new Set<number>();
+  for (const group of getCubieFaceletGroups()) {
+    if (group.length === 1) continue;
+    const isFocus = group.some((index) => focusFacelets.has(index));
+    const hasYellow = group.some((index) => facelets[index] === "U");
+    if (!isFocus || hasYellow) group.forEach((index) => neutral.add(index));
+  }
+  return neutral;
+}
+
+/**
  * 生成和 TwistyTimer 一致的顶面展开图：中间 3×3 为 U 面，外围四条为相邻侧面的顶行。
  * OLL 仅保留黄色朝向，其他贴纸记为 N；PLL 则保留完整的侧面配色来展示置换。
  */
@@ -92,6 +124,10 @@ function getCubieFaceletGroups(): number[][] {
     cubies.set(key, indexes);
   });
   return [...cubies.values()];
+}
+
+function containsColors(facelets: string[], indexes: number[], colors: string[]): boolean {
+  return colors.every((color) => indexes.some((index) => facelets[index] === color));
 }
 
 function applyMove(state: CubeFace[], notation: string): CubeFace[] {

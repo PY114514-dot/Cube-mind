@@ -21,3 +21,15 @@ tests-runner/
 
 # cstimer 仅作为本地查阅参考，不随 CubeMind 发布。
 cstimer/
+
+# APK 静态分析产生的本地文件，不进入发布仓库。
+apk-inspect/
+apk-chinese.txt
+apk-cross.txt
+tmp-apk-strings.mjs
+tmp-lines.mjs
+*.apk
+*.apk*
+apk-inspect-*/
+.tmp-*
+tmp-*.mjs

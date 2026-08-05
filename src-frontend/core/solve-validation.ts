@@ -20,6 +20,13 @@ export interface MoveEventForValidation {
   timestamp?: number;
 }
 
+/** GAN v2 / 魔域历史包使用无符号 16 位设备时钟，跨 0 回绕不应被当成乱序。 */
+function isTimestampWrap(previous: number, current: number): boolean {
+  if (current >= previous) return false;
+  const modulus = previous <= 0xffff && current <= 0xffff ? 0x10000 : 0x1_0000_0000;
+  return previous - current > modulus / 2;
+}
+
 export interface SolveValidation {
   status: SolveStatus;
   isSolved: boolean;
@@ -54,7 +61,8 @@ function findEventAnomalies(events: MoveEventForValidation[]): SolveAnomaly[] {
       seen.add(event.moveCnt);
       previousMoveCnt = event.moveCnt;
     }
-    if (event.timestamp !== undefined && previousTimestamp !== undefined && event.timestamp < previousTimestamp) {
+    if (event.timestamp !== undefined && previousTimestamp !== undefined
+      && event.timestamp < previousTimestamp && !isTimestampWrap(previousTimestamp, event.timestamp)) {
       anomalies.push("out-of-order-event");
     }
     previousTimestamp = event.timestamp;
@@ -94,4 +102,25 @@ export function validateSolve(
 
 export function isSolveEligible(status: SolveStatus | undefined): boolean {
   return status === undefined || status === SolveStatus.Valid;
+}
+
+/**
+ * PB/AO 以设备回读的实体状态为最高优先级；动作流完整性只决定能否做 CFOP/AI。
+ * 旧历史没有实体回读字段时，保持原有 qualityStatus 规则。
+ */
+export function isScoreEligible(
+  physicalState: "confirmed-solved" | "confirmed-unsolved" | "unavailable" | undefined,
+  qualityStatus: SolveStatus | undefined,
+): boolean {
+  if (physicalState === "confirmed-solved") return true;
+  if (physicalState === "confirmed-unsolved") return false;
+  return isSolveEligible(qualityStatus);
+}
+
+/** 仅完整、可回放的动作流可以产生 CFOP 阶段、停顿和 Agent 建议。 */
+export function isAnalysisEligible(
+  analysisEligible: boolean | undefined,
+  qualityStatus: SolveStatus | undefined,
+): boolean {
+  return analysisEligible ?? isSolveEligible(qualityStatus);
 }

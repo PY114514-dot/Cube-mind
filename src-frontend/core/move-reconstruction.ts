@@ -31,6 +31,13 @@ const SLICE_BY_PAIR: Record<string, string> = {
   BF: "S",
 };
 
+/** 每个切片所跟随的参考面（M 跟 L，E 跟 D，S 跟 F） */
+const SLICE_REFERENCE_FACE: Record<string, string> = {
+  M: "L",
+  E: "D",
+  S: "F",
+};
+
 const PRETTY_WINDOW_MS = 120;
 
 function suffix(move: string): "" | "2" | "'" {
@@ -62,7 +69,10 @@ function maybeSliceMove(first: string, second: string): string | null {
   if (secondSuffix !== inverseSuffix(firstSuffix)) return null;
   const slice = SLICE_BY_PAIR[`${firstFace}${secondFace}`];
   if (!slice) return null;
-  return firstSuffix === "'" ? `${slice}'` : slice;
+  // 切片方向由参考面的后缀决定（M→L, E→D, S→F）
+  const refFace = SLICE_REFERENCE_FACE[slice];
+  const refSuffix = firstFace === refFace ? firstSuffix : secondSuffix;
+  return refSuffix === "'" ? `${slice}'` : slice;
 }
 
 export function findMoveLossWarning(previousMoveCnt: number | undefined, currentMoveCnt: number | undefined): MoveLossWarning | null {

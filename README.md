@@ -1,7 +1,7 @@
 # CubeMind
 
 > 面向 CFOP 竞速玩家的本地化 AI 解法分析助手  
-> V0.3 · GAN / 魔域智能魔方 · CFOP 分段与逐槽位复盘 · WCA 观察判罚 · 3D 解法回放 · AI 训练建议
+> V0.4 · GAN / 魔域智能魔方 · CFOP 分段与逐槽位复盘 · WCA 观察判罚 · 3D 解法回放 · AI 训练建议
 
 ## 🚀 快速开始
 
@@ -36,14 +36,14 @@ npm run harness:verify
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ 浏览器 (Chrome / Edge)                                            │
-│ http://localhost:8080                                            │
+│ http://localhost:3000                                            │
 │                                                                  │
 │  src-frontend/                                                   │
 │   ├── ble/         BLE 连接（GAN v2 AES + 魔域明文）              │
 │   ├── scramble/    3x3 WCA 打乱生成                              │
 │   ├── core/        CFOP 阶段识别 + 计时                          │
 │   │                   + WCA 成绩与观察期判罚                      │
-│   ├── formula/     公式库（F2L 12 + OLL 15 + PLL 21）            │
+│   ├── formula/     公式库（F2L 41 + OLL 57 + PLL 21）            │
 │   ├── agent/       DeepSeek fallback（API 调用移到后端）          │
 │   ├── utils/       mathlib + lzstring                           │
 │   └── main.ts      UI 入口                                       │
@@ -100,8 +100,8 @@ d:\计时器\
 │   │   └── timer.ts                   计时器 + 停顿检测
 │   ├── formula/
 │   │   ├── types.ts
-│   │   ├── f2l-formulas.ts            F2L 公式库（12 case）
-│   │   ├── oll-formulas.ts            OLL 公式库（15 case）
+│   │   ├── f2l-formulas.ts            F2L 公式库（41 case）
+│   │   ├── oll-formulas.ts            OLL 公式库（57 case）
 │   │   ├── pll-formulas.ts            PLL 公式库（21 case）
 │   │   └── formula-library.ts         统一入口 + 推荐
 │   ├── agent/
@@ -127,6 +127,7 @@ d:\计时器\
 
 ### M1: BLE + 打乱
 - ✅ 3x3 WCA 打乱生成（20/25/30 步）
+- ✅ 白色 Cross 固定 1～8 步训练打乱：优先筛选 20 步 WCA 状态，低步数自动回退到可验证短打乱
 - ✅ GAN v2 协议（**AES-128 加密** + 明文双模式）
 - ✅ 魔域协议（明文）
 
@@ -150,8 +151,8 @@ d:\计时器\
 - ✅ 历史数据带入（最近 5 把）
 
 ### M5: 公式库（V0.2 核心）
-- ✅ F2L 公式库（12 case）
-- ✅ OLL 公式库（15 case，含 7 个 2-look）
+- ✅ F2L 公式库（41 case）
+- ✅ OLL 公式库（57 case，含 2-look 标签）
 - ✅ PLL 公式库（21 case）
 - ✅ **每条公式包含"如何识别"+"如何执行"教学描述**
 - ✅ AGENT 复盘后一键跳转
@@ -162,6 +163,15 @@ d:\计时器\
 - ✅ 打乱、完整解法与历史详情均支持逐步回放、播放和倍速
 - ✅ 回放默认白底、黄面朝上，便于按 CFOP 视角复盘
 - ✅ GAN 姿态四元数归一化、SLERP 平滑与渲染帧合并
+
+### APK 思路落地（V0.4）
+- ✅ 主训练舞台采用紫色品牌栏、白色卡片、Cross 步数选择器和“随机 / WCA 竞赛 / 下一个 / 输入”动作区
+- ✅ 3D 魔方保持 27 个独立小方块和真实分层转动，增加独立“连接魔方”入口，不复制 APK 资源
+- ✅ AI 结果增加阶段耗时条、步数密度和 F2L 四槽位的用时 / 步数 / 停顿 / 修复概览
+- ✅ 公式库和历史复盘继续复用同一套 3D 预览与白底、黄面朝上的 CFOP 视角
+- ✅ 练习模式支持智能随机 / 顺序出题、未掌握筛选、公式掌握度、识别时间与执行时间
+- ✅ 专项开始前精确核验 F2L / OLL / PLL case；起始状态不匹配时不会记为成功样本
+- ✅ 3D 回放按 27 个独立 cubie 排队执行真实外层转动，高速播放不丢动作
 
 ## 🧪 运行测试
 
@@ -181,15 +191,8 @@ npx tsx --test src-frontend/__tests__/*.test.ts
 
 | 套件 | 通过/总数 |
 |------|----------|
-| mathlib | 9/11（2 跳过已知缺陷） |
-| scramble-333 | 7/7 |
-| cfop-parser | 8/8 |
-| timer | 7/7 |
-| deepseek (fallback) | 6/6 |
-| moyu-cube | 12/12 |
-| formula-library | 15/15 |
-| **gan-crypto** | **10/10**（纯函数） |
-| **总计** | **189 · 0 失败** |
+| 全部 node:test 套件 | **206/206** |
+| **总计** | **206 · 0 失败** |
 
 ## 🔧 技术栈
 
@@ -218,9 +221,23 @@ npx tsx --test src-frontend/__tests__/*.test.ts
 7. 查看 CFOP、F2L 槽位与停顿复盘；需要时打开 3D 解法回放
 8. 点击 AI 分析或跳转公式库进行专项练习
 
+### GAN v4 姿态诊断采样
+
+连接 GAN v4 后，可在 Chrome DevTools 控制台执行以下命令收集 `0xEC` 通知：
+
+```js
+__cubemindGanDiagnostics.start()
+// 静止、绕 X/Y/Z 轴分别转动魔方，并做几次翻转
+copy(__cubemindGanDiagnostics.export())
+__cubemindGanDiagnostics.stop()
+```
+
+导出的 JSON 应随同“静止/旋转方向/动作时间”说明保存，不要把未知载荷直接当作四元数使用。
+
 ## 🐛 已知限制
 
 - **GAN v2 AES 解密**：纯函数已验证（10/10 测试通过），实际解密依赖浏览器 Web Crypto API（Node 测试环境不支持 AES-ECB）。真 GAN 魔方测试留待用户。
+- **GAN v4 陀螺仪**：已识别 `0xEC` 通知并提供原始/解密字节诊断导出；四元数字段仍需真实 GAN v4 样本标定后再接入 3D 姿态。
 - **iOS Safari**：不支持 Web Bluetooth，仅 Chrome / Edge / Bluefy
 - **魔域陀螺仪**：通知入口已预留，但实际姿态字段仍需真机抓包标定。
 - **历史数据**：当前为 localStorage + 后端 JSON；后续可迁移到 SQLite。

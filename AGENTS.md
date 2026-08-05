@@ -24,29 +24,61 @@
 ### 2.2 目录结构
 ```
 d:\计时器\
-├── index.html              ← Demo 入口
+├── index.html              ← Demo 入口（由 dist/ 托管）
 ├── AGENTS.md               ← 本文件
 ├── README.md               ← 使用说明
+├── package.json            ← npm scripts + deps
+├── tsconfig.json           ← strict, ES2020, Bundler resolution
+├── build.mjs              ← esbuild: bootstrap.ts → dist/bundle.js (IIFE)
+├── start.bat / start.py   ← 一键启动
 ├── doc\                    ← 文档（产品/技术/日志/反馈）
 │   ├── 01-product\
 │   ├── 02-tech\
 │   ├── 03-dev-log\daily-log\
 │   └── 04-user-feedback\
-├── cstimer\                ← 参考源（不复刻，仅查阅）
-└── src\
-    ├── core\               ← 业务核心（计时、阶段识别、AGENT）
-    ├── ble\                ← BLE 协议层（gan-cube-protocol、moyu-cube-protocol）
-    ├── scramble\           ← 打乱生成（scramble-333）
-    ├── agent\              ← DeepSeek 接入 + prompt 模板
-    ├── ui\                 ← DOM 渲染、事件绑定
-    └── utils\              ← 通用工具（mathlib、time、storage）
+├── cstimer\                ← 参考源（不复刻，仅查阅，tsconfig 排除）
+├── dist\                   ← 构建产物（bundle.js + index.html）
+├── src-frontend\           ← 浏览器端 TypeScript（esbuild 打包）
+│   ├── bootstrap.ts        ← 入口（错误边界 + 动态 import main.ts）
+│   ├── main.ts             ← 应用编排层（计时/解法生命周期/练习模式）
+│   ├── ble\                ← BLE 协议层
+│   │   ├── cube-driver.ts  ← 统一 CubeDriver 接口
+│   │   ├── gan-cube-protocol.ts  ← GAN v1-v4（implements CubeDriver）
+│   │   ├── moyu-cube-protocol.ts ← 魔域 MHC + MoYu32（implements CubeDriver）
+│   │   ├── gan-crypto.ts / aes128.ts ← AES-128 加解密
+│   │   └── ble-packet-harness.ts ← 录制/回放测试工具
+│   ├── controllers\        ← UI 控制器（DOM 绑定 + 状态管理）
+│   │   ├── ble-connection-controller.ts ← BLE 连接生命周期（CubeDriver[] 驱动）
+│   │   ├── settings-controller.ts
+│   │   ├── formula-library-controller.ts
+│   │   ├── history-controller.ts
+│   │   └── timer-display-controller.ts
+│   ├── core\               ← 业务核心（纯函数，可单测）
+│   ├── agent\              ← DeepSeek 接入 + 分析控制器
+│   ├── formula\            ← CFOP 公式库（F2L/OLL/PLL）
+│   ├── scramble\           ← WCA 打乱生成
+│   ├── ui\                 ← 3D 渲染、回放播放器
+│   ├── utils\              ← 通用工具（mathlib、quaternion）
+│   ├── types\              ← 环境声明（web-bluetooth.d.ts）
+│   ├── __tests__\          ← 单元测试（node:test + tsx）
+│   └── __fixtures__\       ← 测试数据
+├── src-backend\            ← Node.js Express 服务端（tsx watch 运行）
+│   ├── server.ts / app.ts
+│   ├── routes\             ← /api/analyze, /api/solves, /api/diagnostics
+│   └── services\           ← DeepSeek 客户端 + fallback
+└── src-shared\             ← 前后端共享类型 + 本地分析 fallback
+    ├── analysis-types.ts
+    ├── local-analysis-fallback.ts
+    └── training-plan-types.ts
 ```
 
 ### 2.3 模块依赖规则
-- `ble/` 只依赖 `utils/`
-- `core/` 可依赖 `ble/`、`scramble/`、`agent/`、`utils/`
-- `ui/` 可依赖一切（仅做渲染和事件绑定，不含业务逻辑）
-- **禁止反向依赖**（如 `ble/` 不能 import `core/`）
+- `ble/` 只依赖 `utils/`；`ble/cube-driver.ts` 是接口层，不依赖具体实现
+- `core/` 可依赖 `ble/`（仅类型）、`scramble/`、`agent/`（仅类型）、`utils/`
+- `controllers/` 可依赖 `core/`、`ble/`（仅类型 + CubeDriver 接口）、`formula/`、`ui/`、`utils/`
+- `ui/` 可依赖 `core/`、`utils/`
+- `main.ts` 是 composition root，可 import 一切
+- **禁止反向依赖**（如 `ble/` 不能 import `controllers/` 或 `core/` 的实现）
 
 ### 2.4 构建命令
 
@@ -70,6 +102,14 @@ python -m http.server 8080
 - 开发服务器：`npm run serve` → http://localhost:3000（构建后由后端统一托管前端与 API）
 - Demo 页面：`index.html`
 - 每次新增模块必须在 `index.html` 末尾 `<script type="module">` 中验证
+
+### 2.6 BLE 驱动扩展
+新增品牌魔方只需三步：
+1. 在 `ble/` 下新建 `xxx-cube-protocol.ts`，实现 `CubeDriver` 接口
+2. 在 `index.html` 连接面板加对应按钮和 MAC 输入框
+3. 在 `main.ts` 的 `driverSlots` Map 和 drivers 数组中注册
+
+controller 主逻辑无需修改。
 
 ---
 

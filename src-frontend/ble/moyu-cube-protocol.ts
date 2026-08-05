@@ -13,7 +13,7 @@
  *   - MoyuCube: BLE 连接类（依赖 navigator.bluetooth）
  */
 
-import type { CubeMove, CubeCallback, BatteryCallback, ConnectCallback, DisconnectCallback } from "./gan-cube-protocol.ts";
+import type { CubeMove, CubeMoveCallback as CubeCallback, CubeBatteryCallback as BatteryCallback, CubeConnectCallback as ConnectCallback, CubeDisconnectCallback as DisconnectCallback, CubeDriver, CubeGyroCallback, CubeQuaternion } from "./cube-driver.ts";
 import { Aes128 } from "./aes128.ts";
 import { decodeGanValue, encodeGanValue, parseMac, normalizeMac, type GanDecoder } from "./gan-crypto.ts";
 import { decodeCompressedKey } from "./gan-crypto-helpers.ts";
@@ -54,6 +54,28 @@ export interface ParsedMoyu32Event {
   softwareVersion?: string;
 }
 
+const MOYU32_GYRO_RESPONSE = 0xab;
+const MOYU32_GYRO_REQUEST = 0xac;
+const MOYU32_GYRO_SCALE = 1_073_741_824;
+
+/**
+ * 解析 WCU_MY32 的姿态通知。DCTimer-BLE 已验证该包为 0xAB + 4 个
+ * little-endian int32（w/x/y/z），数值缩放为 2^30。
+ */
+export function parseMoyu32Gyro(data: number[]): CubeQuaternion | null {
+  if (data.length < 17 || data[0] !== MOYU32_GYRO_RESPONSE) return null;
+  const bytes = new Uint8Array(data.slice(0, 17));
+  const view = new DataView(bytes.buffer);
+  const w = view.getInt32(1, true) / MOYU32_GYRO_SCALE;
+  const x = view.getInt32(5, true) / MOYU32_GYRO_SCALE;
+  const y = view.getInt32(9, true) / MOYU32_GYRO_SCALE;
+  const z = view.getInt32(13, true) / MOYU32_GYRO_SCALE;
+  const length = Math.hypot(w, x, y, z);
+  if (!Number.isFinite(length) || length < 0.0001) return null;
+  // WCU 传感器坐标系与页面坐标系不同；映射与 DCTimer-BLE 保持一致。
+  return { x: x / length, y: z / length, z: -y / length, w: w / length };
+}
+
 /** MHC 陀螺特征值的原始通知；尚未假设未经验证的四元数编码。 */
 export interface MoyuGyroRawEvent {
   bytes: number[];
@@ -84,16 +106,20 @@ export function parseTurn(
   const results: ParsedTurn[] = [];
   for (let i = 0; i < nMoves; i++) {
     const offset = 1 + i * 6;
-    // 时间戳：4 字节组合 / 65536 * 1000
-    const ts =
+    // 时间戳：4 字节组合 / 65536 * 1000（>>> 0 强制无符号，避免高位 ≥128 时溢出为负）
+    const ts = (
       (data.getUint8(offset + 1) << 24) |
       (data.getUint8(offset + 0) << 16) |
       (data.getUint8(offset + 3) << 8) |
-      data.getUint8(offset + 2);
+      data.getUint8(offset + 2)
+    ) >>> 0;
     const tsMs = Math.round((ts / 65536) * 1000);
 
     const face = data.getUint8(offset + 4);
     const dir = Math.round(data.getUint8(offset + 5) / 36);
+
+    // 畸形包可能产生 face >= 6，跳过以避免 NaN 污染 faceStatus
+    if (face >= 6) continue;
 
     const prevRot = faceStatus[face];
     const curRot = faceStatus[face] + dir;
@@ -211,7 +237,11 @@ function createMoyu32Decoder(mac: string): GanDecoder {
 }
 
 /** 创建一个新的魔域魔方实例 */
-export class MoyuCube {
+export class MoyuCube implements CubeDriver {
+  readonly brand = "魔域";
+  readonly needsMac = true;
+  readonly macStorageKey = "cubemind:moyu-mac";
+
   private device: BluetoothDevice | null = null;
   private deviceName: string | null = null;
   private readChar: BluetoothRemoteGATTCharacteristic | null = null;
@@ -220,12 +250,24 @@ export class MoyuCube {
   private macAddress: string | null = null;
   private faceStatus: number[] = [0, 0, 0, 0, 0, 0];
   private prevMoveCnt = -1;
+  private isMoyu32 = false;
 
   private onMoveCb: CubeCallback | null = null;
   private onBatteryCb: BatteryCallback | null = null;
   private onConnectCb: ConnectCallback | null = null;
   private onDisconnectCb: DisconnectCallback | null = null;
+  private onGyroCb: CubeGyroCallback | null = null;
   private onGyroRawCb: MoyuGyroRawCallback | null = null;
+
+  // 命名事件处理器引用（disconnect 时需 removeEventListener 防止泄漏）
+  private boundOnGattDisconnect: (() => void) | null = null;
+  private boundOnTurnChanged: ((e: Event) => void) | null = null;
+  private boundOnGyroChanged: ((e: Event) => void) | null = null;
+  private boundOnReadChanged: ((e: Event) => void) | null = null;
+  private turnChar: BluetoothRemoteGATTCharacteristic | null = null;
+  private gyroChar: BluetoothRemoteGATTCharacteristic | null = null;
+
+  get supportsGyro(): boolean { return this.isMoyu32; }
 
   async connect(preferredMac?: string): Promise<void> {
     if (!navigator.bluetooth) {
@@ -248,11 +290,14 @@ export class MoyuCube {
     this.deviceName = (device.name || "Unknown MoYu Cube").trim();
     console.log(`[moyu-cube] 选中设备: ${this.deviceName}`);
 
-    device.addEventListener("gattserverdisconnected", () => this.handleDisconnect());
+    this.boundOnGattDisconnect = () => this.handleDisconnect();
+    device.addEventListener("gattserverdisconnected", this.boundOnGattDisconnect);
 
     if (this.deviceName && this.deviceName.startsWith("WCU_MY3")) {
+      this.isMoyu32 = true;
       await this.connectMoyu32(device, preferredMac);
     } else {
+      this.isMoyu32 = false;
       await this.connectMhc(device);
     }
 
@@ -271,30 +316,34 @@ export class MoyuCube {
     const service = await server.getPrimaryService(MOYU_SERVICE_UUID);
     const chars = await service.getCharacteristics();
 
-    const turnChar = chars.find((c) => c.uuid.toUpperCase() === MOYU_CHRCT_UUID_TURN.toUpperCase());
+    this.turnChar = chars.find((c) => c.uuid.toUpperCase() === MOYU_CHRCT_UUID_TURN.toUpperCase()) || null;
 
-    if (!turnChar) throw new Error("找不到 turn characteristic");
+    if (!this.turnChar) throw new Error("找不到 turn characteristic");
 
-    turnChar.addEventListener("characteristicvaluechanged", (e) => {
+    this.boundOnTurnChanged = (e: Event) => {
       const value = (e.target as BluetoothRemoteGATTCharacteristic).value;
       if (!value) return;
       this.handleTurn(value, Date.now());
-    });
+    };
+    this.turnChar.addEventListener("characteristicvaluechanged", this.boundOnTurnChanged);
 
     const readChar = chars.find((c) => c.uuid.toUpperCase() === MOYU_CHRCT_UUID_READ.toUpperCase());
-    const gyroChar = chars.find((c) => c.uuid.toUpperCase() === MOYU_CHRCT_UUID_GYRO.toUpperCase());
-    gyroChar?.addEventListener("characteristicvaluechanged", (event) => {
-      const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
-      if (!value) return;
-      this.onGyroRawCb?.({
-        bytes: Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength)),
-        locTime: Date.now(),
-      });
-    });
+    this.gyroChar = chars.find((c) => c.uuid.toUpperCase() === MOYU_CHRCT_UUID_GYRO.toUpperCase()) || null;
+    if (this.gyroChar) {
+      this.boundOnGyroChanged = (event: Event) => {
+        const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
+        if (!value) return;
+        this.onGyroRawCb?.({
+          bytes: Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength)),
+          locTime: Date.now(),
+        });
+      };
+      this.gyroChar.addEventListener("characteristicvaluechanged", this.boundOnGyroChanged);
+    }
     await Promise.all([
       readChar?.startNotifications(),
-      turnChar.startNotifications(),
-      gyroChar?.startNotifications(),
+      this.turnChar.startNotifications(),
+      this.gyroChar?.startNotifications(),
     ]);
   }
 
@@ -316,15 +365,18 @@ export class MoyuCube {
     this.writeChar = chars.find((c) => c.uuid.toUpperCase() === MOYU32_CHRCT_UUID_WRITE.toUpperCase()) || null;
     if (!this.readChar || !this.writeChar) throw new Error("找不到魔域 WCU read/write characteristic");
 
-    this.readChar.addEventListener("characteristicvaluechanged", (e) => {
+    this.boundOnReadChanged = (e: Event) => {
       const value = (e.target as BluetoothRemoteGATTCharacteristic).value;
       if (!value) return;
       this.handleMoyu32(value, Date.now()).catch((err) => console.error("[moyu-cube] WCU event error:", err));
-    });
+    };
+    this.readChar.addEventListener("characteristicvaluechanged", this.boundOnReadChanged);
     await this.readChar.startNotifications();
     await this.sendMoyu32Request(161);
     await this.sendMoyu32Request(163);
     await this.sendMoyu32Request(164);
+    await this.sendMoyu32GyroEnableRequest();
+    await this.sendMoyu32Request(163);
   }
 
   /** 处理 turn 事件，喂入 parseTurn 并触发回调 */
@@ -343,6 +395,11 @@ export class MoyuCube {
 
   private async handleMoyu32(data: DataView, locTime: number): Promise<void> {
     const bytes = await this.decodeMoyu32(data);
+    const gyro = parseMoyu32Gyro(bytes);
+    if (gyro) {
+      this.onGyroCb?.(gyro);
+      return;
+    }
     const event = parseMoyu32Data(bytes, this.prevMoveCnt);
     if (event.type === "state" && event.moveCnt !== undefined && this.prevMoveCnt === -1) {
       this.prevMoveCnt = event.moveCnt;
@@ -376,6 +433,15 @@ export class MoyuCube {
     if (!this.writeChar) return;
     const req = new Array(20).fill(0);
     req[0] = opcode;
+    const encoded = this.decoder ? await encodeGanValue(this.decoder, req) : req;
+    await this.writeChar.writeValue(new Uint8Array(encoded).buffer);
+  }
+
+  private async sendMoyu32GyroEnableRequest(): Promise<void> {
+    if (!this.writeChar) return;
+    const req = new Array(20).fill(0);
+    req[0] = MOYU32_GYRO_REQUEST;
+    req[2] = 1;
     const encoded = this.decoder ? await encodeGanValue(this.decoder, req) : req;
     await this.writeChar.writeValue(new Uint8Array(encoded).buffer);
   }
@@ -429,12 +495,37 @@ export class MoyuCube {
 
   private handleDisconnect(): void {
     console.log("[moyu-cube] 设备已断开");
+
+    // 移除事件监听器，防止重连时泄漏
+    if (this.device && this.boundOnGattDisconnect) {
+      this.device.removeEventListener("gattserverdisconnected", this.boundOnGattDisconnect);
+    }
+    if (this.turnChar && this.boundOnTurnChanged) {
+      this.turnChar.removeEventListener("characteristicvaluechanged", this.boundOnTurnChanged);
+      this.turnChar.stopNotifications().catch(() => {});
+    }
+    if (this.gyroChar && this.boundOnGyroChanged) {
+      this.gyroChar.removeEventListener("characteristicvaluechanged", this.boundOnGyroChanged);
+      this.gyroChar.stopNotifications().catch(() => {});
+    }
+    if (this.readChar && this.boundOnReadChanged) {
+      this.readChar.removeEventListener("characteristicvaluechanged", this.boundOnReadChanged);
+      this.readChar.stopNotifications().catch(() => {});
+    }
+
+    this.boundOnGattDisconnect = null;
+    this.boundOnTurnChanged = null;
+    this.boundOnGyroChanged = null;
+    this.boundOnReadChanged = null;
     this.device = null;
     this.readChar = null;
     this.writeChar = null;
+    this.turnChar = null;
+    this.gyroChar = null;
     this.decoder = null;
     this.faceStatus = [0, 0, 0, 0, 0, 0];
     this.prevMoveCnt = -1;
+    this.isMoyu32 = false;
     this.onDisconnectCb?.();
   }
 
@@ -462,9 +553,55 @@ export class MoyuCube {
 
   onMove(cb: CubeCallback): void { this.onMoveCb = cb; }
   onBattery(cb: BatteryCallback): void { this.onBatteryCb = cb; }
+  onGyro(cb: CubeGyroCallback): void { this.onGyroCb = cb; }
   onGyroRaw(cb: MoyuGyroRawCallback): void { this.onGyroRawCb = cb; }
   onConnect(cb: ConnectCallback): void { this.onConnectCb = cb; }
   onDisconnect(cb: DisconnectCallback): void { this.onDisconnectCb = cb; }
+
+  /** 重连到之前已授权的设备（不弹选择器），失败时 reject */
+  async reconnect(): Promise<void> {
+    if (!this.device?.gatt) throw new Error("无已授权设备，无法重连");
+    this.boundOnGattDisconnect = () => this.handleDisconnect();
+    this.device.addEventListener("gattserverdisconnected", this.boundOnGattDisconnect);
+    const server = await this.device.gatt.connect();
+    // 根据设备名判断协议类型并重新订阅
+    if (this.deviceName?.startsWith("WCU_MY3")) {
+      this.isMoyu32 = true;
+      const service = await server.getPrimaryService(MOYU32_SERVICE_UUID);
+      const chars = await service.getCharacteristics();
+      this.writeChar = chars.find((c) => c.uuid.toUpperCase() === MOYU32_CHRCT_UUID_WRITE.toUpperCase()) ?? null;
+      const readChar = chars.find((c) => c.uuid.toUpperCase() === MOYU32_CHRCT_UUID_READ.toUpperCase());
+      if (!readChar) throw new Error("重连失败：找不到 WCU read characteristic");
+      this.boundOnReadChanged = (e: Event) => {
+        const value = (e.target as BluetoothRemoteGATTCharacteristic).value;
+        if (!value) return;
+        this.handleMoyu32(value, Date.now()).catch((err) => console.error("[moyu-cube] WCU reconnect event error:", err));
+      };
+      readChar.addEventListener("characteristicvaluechanged", this.boundOnReadChanged);
+      await readChar.startNotifications();
+      this.readChar = readChar;
+      await this.sendMoyu32Request(161);
+      await this.sendMoyu32Request(163);
+      await this.sendMoyu32Request(164);
+      await this.sendMoyu32GyroEnableRequest();
+      await this.sendMoyu32Request(163);
+    } else {
+      this.isMoyu32 = false;
+      const service = await server.getPrimaryService(MOYU_SERVICE_UUID);
+      const chars = await service.getCharacteristics();
+      const turnChar = chars.find((c) => c.uuid.toUpperCase() === MOYU_CHRCT_UUID_TURN.toUpperCase());
+      if (!turnChar) throw new Error("重连失败：找不到 MHC turn characteristic");
+      this.boundOnTurnChanged = (e: Event) => {
+        const value = (e.target as BluetoothRemoteGATTCharacteristic).value;
+        if (!value) return;
+        this.handleTurn(value, Date.now());
+      };
+      turnChar.addEventListener("characteristicvaluechanged", this.boundOnTurnChanged);
+      await turnChar.startNotifications();
+      this.turnChar = turnChar;
+    }
+    this.onConnectCb?.();
+  }
 }
 
 export const moyuCube = new MoyuCube();

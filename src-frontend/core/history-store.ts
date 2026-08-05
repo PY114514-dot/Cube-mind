@@ -1,5 +1,5 @@
 import type { AnalysisInput } from "../agent/types.ts";
-import { isSolveEligible } from "./solve-validation.ts";
+import { isScoreEligible } from "./solve-validation.ts";
 
 export const HISTORY_STORAGE_KEY = "cubemind:history";
 
@@ -8,7 +8,7 @@ export class HistoryStore {
 
   constructor(initial: AnalysisInput[] = []) { this.records = initial; }
   get all(): AnalysisInput[] { return this.records; }
-  get eligible(): AnalysisInput[] { return this.records.filter((solve) => isSolveEligible(solve.qualityStatus)); }
+  get eligible(): AnalysisInput[] { return this.records.filter((solve) => isScoreEligible(solve.physicalState, solve.qualityStatus)); }
 
   add(record: AnalysisInput): void {
     const next = [...this.records, record].slice(-500);
@@ -27,7 +27,19 @@ export class HistoryStore {
   save(): void { this.persist(this.records); }
 
   private persist(records: AnalysisInput[]): void {
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(records));
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(records));
+    } catch (error) {
+      // QuotaExceededError：裁剪最旧 20% 后重试一次
+      console.warn("[history-store] 存储写入失败，尝试裁剪旧记录:", error);
+      const trimmed = records.slice(Math.ceil(records.length * 0.2));
+      try {
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
+        this.records = trimmed;
+      } catch {
+        console.error("[history-store] 裁剪后仍无法写入，本次持久化跳过");
+      }
+    }
   }
 
   static load(): HistoryStore {

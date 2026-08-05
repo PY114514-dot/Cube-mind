@@ -1,8 +1,8 @@
-import type { AnalysisInput } from "./types.ts";
+import type { AnalysisInput, AnalysisResult } from "./types.ts";
 import { isSolveEligible } from "../core/solve-validation.ts";
 
 export function createHistoryAnalysisInput(records: AnalysisInput[], scope: number): AnalysisInput | null {
-  const solves = records.filter((solve) => isSolveEligible(solve.qualityStatus)).slice(-scope);
+  const solves = records.filter((solve) => solve.analysisEligible ?? isSolveEligible(solve.qualityStatus)).slice(-scope);
   if (solves.length === 0) return null;
   const latestSolve = solves[solves.length - 1];
   const average = (field: keyof AnalysisInput): number =>
@@ -42,10 +42,21 @@ export function createHistoryAnalysisInput(records: AnalysisInput[], scope: numb
   };
 }
 
-export function extractBottleneck(text: string): string {
-  if (text.includes("F2L")) return "F2L";
-  if (text.includes("OLL")) return "OLL";
-  if (text.includes("PLL")) return "PLL";
-  if (text.includes("Cross") || text.includes("cross")) return "Cross";
+/** 从分析结果中提取瓶颈阶段，优先使用结构化字段 */
+export function extractBottleneck(text: string, result?: AnalysisResult): string {
+  if (result?.bottleneckStage) return result.bottleneckStage;
+  // 回退：按瓶颈文本中首次出现的阶段名判断
+  const stages = ["Cross", "F2L", "OLL", "PLL"] as const;
+  let earliest = -1;
+  let found = "";
+  for (const stage of stages) {
+    const idx = text.indexOf(stage);
+    if (idx !== -1 && (earliest === -1 || idx < earliest)) {
+      earliest = idx;
+      found = stage;
+    }
+  }
+  if (found) return found;
+  if (text.includes("cross") || text.includes("十字")) return "Cross";
   return "";
 }

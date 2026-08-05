@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { analyze } from "../services/deepseek.ts";
+import { analyze, analyzeStream } from "../services/deepseek.ts";
 import { parseAnalysisInput } from "../validation.ts";
 
 const WINDOW_MS = 60_000;
@@ -21,6 +21,11 @@ function isRateLimited(clientId: string, now: number): boolean {
   return current.count > MAX_REQUESTS_PER_WINDOW;
 }
 
+/** 写一条 SSE 事件 */
+function sseWrite(res: Response, payload: Record<string, unknown>): void {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
 analyzeRouter.post("/analyze", async (req: Request, res: Response) => {
   const clientId = req.ip ?? req.socket.remoteAddress ?? "unknown";
   if (isRateLimited(clientId, Date.now())) {
@@ -32,10 +37,39 @@ analyzeRouter.post("/analyze", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "分析数据格式无效。" });
   }
 
+  const wantStream = req.query.stream === "true";
+
+  if (!wantStream) {
+    try {
+      res.json(await analyze(input));
+    } catch (error) {
+      console.error("[analyze] 分析失败:", error);
+      res.status(500).json({ error: "分析失败，请稍后重试。" });
+    }
+    return;
+  }
+
+  // SSE 流式模式
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+
+  // 客户端断开时标记，避免继续写入
+  let aborted = false;
+  req.on("close", () => { aborted = true; });
+
   try {
-    res.json(await analyze(input));
+    const result = await analyzeStream(input, (delta) => {
+      if (!aborted) sseWrite(res, { type: "chunk", text: delta });
+    });
+    if (!aborted) sseWrite(res, { type: "done", result });
   } catch (error) {
-    console.error("[analyze] 分析失败:", error);
-    res.status(500).json({ error: "分析失败，请稍后重试。" });
+    console.error("[analyze] 流式分析失败:", error);
+    if (!aborted) sseWrite(res, { type: "error", message: "分析失败，请稍后重试。" });
+  } finally {
+    res.end();
   }
 });

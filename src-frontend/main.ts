@@ -11,38 +11,47 @@
 import { scramble333 } from "./scramble/scramble-333.ts";
 import { parseCfop, formatCfop, type CfopResult } from "./core/cfop-parser.ts";
 import { Timer } from "./core/timer.ts";
-import { ganCube, type CubeMove } from "./ble/gan-cube-protocol.ts";
-import { moyuCube } from "./ble/moyu-cube-protocol.ts";
-import { analyzeWithDeepSeek } from "./agent/deepseek.ts";
-import type { AnalysisInput, AnalysisResult } from "./agent/types.ts";
-import { recommendFormulas, listByCategory, getLibraryStats, getFormulaById } from "./formula/formula-library.ts";
-import type { Formula, FormulaCategory, FormulaVariant } from "./formula/types.ts";
-import { createCaseFacelets, createFormulaTopViewState, getCubieFaceletIndexesWithColor, getUnsolvedCubieFaceletIndexes, getFace, invertAlgorithm } from "./formula/cube-case-diagram.ts";
+import type { CubeMove } from "./ble/cube-driver.ts";
+import type { AnalysisInput, AnalysisResult, AnalysisIssue, AnalysisDrill } from "./agent/types.ts";
+import { listByCategory, getLibraryStats } from "./formula/formula-library.ts";
+import type { Formula, FormulaCategory } from "./formula/types.ts";
 import { getFormulaSetupMoves, isFormulaDevicePracticeSafe } from "./formula/setup-validation.ts";
-import { recognizeF2lCase, recognizeF2lPracticeCase } from "./core/f2l-case-recognizer.ts";
+import { recognizeF2lCase, recognizeFormulaPracticeCase } from "./core/f2l-case-recognizer.ts";
 import { applyScrambleMove, createScrambleProgress, invertMove, type ScrambleProgress } from "./core/scramble-tracker.ts";
 import { isScrambleStateVerified } from "./core/scramble-verification.ts";
 import { CubeVisualizer } from "./ui/cube-visualizer.ts";
 import { SolveReplayPlayer } from "./ui/solve-replay-player.ts";
-import { HistoryDetailController } from "./ui/history-detail-controller.ts";
-import { isMoveStreamReliable, isSolveEligible, validateSolve } from "./core/solve-validation.ts";
-import { calculateWcaAverage, formatWcaAverage, formatWcaSolveTime, getWcaScore } from "./core/wca-average.ts";
-import { getInspectionOutcome, type InspectionPenalty } from "./core/inspection-rules.ts";
+import { renderSolveTimeline } from "./ui/solve-timeline.ts";
+import { HistoryController, SYSTEM_HISTORY_GROUP_IDS } from "./controllers/history-controller.ts";
+import { isAnalysisEligible, isMoveStreamReliable, isScoreEligible as isScoreEligibleByState, isSolveEligible, validateSolve } from "./core/solve-validation.ts";
+import { calculateWcaAverage, formatWcaSolveTime, getWcaScore } from "./core/wca-average.ts";
+import type { InspectionPenalty } from "./core/inspection-rules.ts";
 import { HistoryStore } from "./core/history-store.ts";
-import { formatHistoryCsv, formatHistoryJson } from "./core/history-export.ts";
 import { analyzeSolveSteps, type SolveReview } from "./core/solve-review.ts";
 import { analyzeF2lSlots, formatF2lSlotAnalysis } from "./core/f2l-slot-tracker.ts";
-import { createHistoryAnalysisInput, extractBottleneck } from "./agent/analysis-input.ts";
+import { extractBottleneck } from "./agent/analysis-input.ts";
+import { loadSessionContext, appendSessionEntry } from "./core/session-context.ts";
+import { aggregateIssues, generatePlan, updatePlanProgress, getTodayTask } from "./core/training-plan-engine.ts";
+import { loadPlan, savePlan, appendAnalysisSnapshot, loadAnalysisHistory, snapshotsToResults } from "./core/training-plan-store.ts";
+import type { TrainingPlan } from "../src-shared/training-plan-types.ts";
 import { bindAnalysisController } from "./agent/analysis-controller.ts";
+import { BleConnectionController } from "./controllers/ble-connection-controller.ts";
+import { ganCube } from "./ble/gan-cube-protocol.ts";
+import { moyuCube } from "./ble/moyu-cube-protocol.ts";
+import { TimerDisplayController } from "./controllers/timer-display-controller.ts";
+import { FormulaLibraryController } from "./controllers/formula-library-controller.ts";
 import { convertSolutionForWhiteDown, solveCross, solveXCross } from "./core/cross-solver.ts";
 import { getCfopPhase } from "./core/cstimer-cfop.ts";
-import { getFormulaMastery, getPracticeSummary, selectPracticeFormula, type PracticeRecord } from "./core/practice-stats.ts";
+import { getPracticeSummary, selectPracticeFormula, type PracticeRecord } from "./core/practice-stats.ts";
 import { calculateCrossMetrics } from "./core/cross-metrics.ts";
 import { findMoveLossWarning, summarizePrettyReconstruction } from "./core/move-reconstruction.ts";
 import { presentSolveQuality } from "./core/data-quality.ts";
-import { loadAppSettings, normalizeAppSettings, saveAppSettings, type AppSettings } from "./core/app-settings.ts";
+import { SOLVED_FACELET } from "./utils/mathlib.ts";
+import { SettingsController } from "./controllers/settings-controller.ts";
 import { sendDiagnosticEvent, type DiagnosticMode } from "./core/diagnostics-client.ts";
-import { F2L_CASE_COLORS } from "./utils/cube-colors.ts";
+import { CubeEditorController } from "./controllers/cube-editor-controller.ts";
+import { canBeginInspection } from "./core/scramble-ready-gate.ts";
+import { validateCubeEditorFacelets } from "./agent/cube-state-tools.ts";
 
 // ====== DOM 引用 ======
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -53,7 +62,11 @@ const $ = <T extends HTMLElement>(id: string): T => {
 
 const els = {
   scrambleText: $("scramble-text") as HTMLDivElement,
-  btnScramble: $("btn-scramble") as HTMLButtonElement,
+  btnNextScramble: $("btn-next-scramble") as HTMLButtonElement,
+  btnToggleScrambleSteps: $("btn-toggle-scramble-steps") as HTMLButtonElement,
+  btnToggleCrossSettings: $("btn-toggle-cross-settings") as HTMLButtonElement,
+  crossTrainingSettings: $("cross-training-settings") as HTMLDivElement,
+  crossStepSelector: $("cross-step-selector") as HTMLDivElement,
   btnSolveCross: $("btn-solve-cross") as HTMLButtonElement,
   btnSolveXCross: $("btn-solve-xcross") as HTMLButtonElement,
   crossSolution: $("cross-solution") as HTMLDivElement,
@@ -110,6 +123,9 @@ const els = {
   btnSetMoyuMac: $("btn-set-moyu-mac") as HTMLButtonElement,
   btnConnectMoyu: $("btn-connect-moyu") as HTMLButtonElement,
   btnDisconnect: $("btn-disconnect") as HTMLButtonElement,
+  btnToggleBleDiagnostics: $("btn-toggle-ble-diagnostics") as HTMLButtonElement,
+  btnExportBleDiagnostics: $("btn-export-ble-diagnostics") as HTMLButtonElement,
+  bleDiagnosticsStatus: $("ble-diagnostics-status") as HTMLElement,
   performanceChart: $("performance-chart") as unknown as SVGSVGElement,
   performanceMean: $("performance-mean") as HTMLElement,
   performanceStd: $("performance-std") as HTMLElement,
@@ -122,7 +138,9 @@ const els = {
   cfopOutput: $("cfop-output") as HTMLPreElement,
   cfopSummary: $("cfop-summary") as HTMLDivElement,
   resultNextAction: $("result-next-action") as HTMLDivElement,
+  solveTimeline: $("solve-timeline") as HTMLDivElement,
   agentOutput: $("agent-output") as HTMLDivElement,
+  trainingPlanContainer: $("training-plan-container") as HTMLDivElement,
   log: $("log") as HTMLDivElement,
   // 公式库相关
   libraryModal: $("library-modal") as HTMLDivElement,
@@ -137,6 +155,13 @@ const els = {
   analysisCount: $("analysis-count") as HTMLInputElement,
   analysisSampleStatus: $("analysis-sample-status"),
   btnRunAnalysis: $("btn-run-analysis") as HTMLButtonElement,
+  cubeEditorPreview: $("cube-editor-preview") as HTMLDivElement,
+  cubeEditorPalette: $("cube-editor-palette") as HTMLDivElement,
+  cubeEditorStatus: $("cube-editor-status"),
+  cubeAgentPrompt: $("cube-agent-prompt") as HTMLTextAreaElement,
+  btnCubeEditorReset: $("btn-cube-editor-reset") as HTMLButtonElement,
+  btnCubeEditorSolved: $("btn-cube-editor-solved") as HTMLButtonElement,
+  btnAskCubeAgent: $("btn-ask-cube-agent") as HTMLButtonElement,
   practiceBanner: $("practice-banner") as HTMLDivElement,
   practiceInfo: $("practice-info") as HTMLSpanElement,
   practiceFeedback: $("practice-feedback") as HTMLElement,
@@ -153,66 +178,112 @@ const els = {
 
 // ====== 状态 ======
 const timer = new Timer();
-let appSettings = loadAppSettings(localStorage);
+const settingsController = new SettingsController({
+  btnOpenSettings: els.btnOpenSettings,
+  settingsModal: els.settingsModal,
+  btnCloseSettings: els.btnCloseSettings,
+  btnSaveSettings: els.btnSaveSettings,
+  settingCrossSteps: els.settingCrossSteps,
+  settingInspectionEnabled: els.settingInspectionEnabled,
+  settingInspectionSeconds: els.settingInspectionSeconds,
+  settingTheme: els.settingTheme,
+}, (msg) => log(msg));
+const formulaLibrary = new FormulaLibraryController({
+  libraryModal: els.libraryModal,
+  libraryContent: els.libraryContent,
+  libraryTitle: els.libraryTitle,
+  btnCloseLibrary: els.btnCloseLibrary,
+  btnOpenLibrary: els.btnOpenLibrary,
+  practiceModal: els.practiceModal,
+  practiceFormulaName: els.practiceFormulaName,
+  practiceCount: els.practiceCount,
+}, {
+  log: (msg, level) => log(msg, level),
+  onStartPractice: (formula, target, candidates, order) => startPractice(formula, target, candidates, order),
+  getPracticeRecords: () => getPracticeRecords(),
+});
+const historyController = new HistoryController({
+  historyToday: els.historyToday,
+  historyAo5: els.historyAo5,
+  historyAo12: els.historyAo12,
+  historyAo25: els.historyAo25,
+  historyAo50: els.historyAo50,
+  historyAo100: els.historyAo100,
+  historyLastFive: els.historyLastFive,
+  deviceHistory: els.deviceHistory,
+  historyGroup: els.historyGroup,
+  btnNewHistoryGroup: els.btnNewHistoryGroup,
+  btnDeleteHistoryGroup: els.btnDeleteHistoryGroup,
+  btnExportHistoryJson: els.btnExportHistoryJson,
+  btnExportHistoryCsv: els.btnExportHistoryCsv,
+  scoreDisplayMode: els.scoreDisplayMode,
+  reviewThreshold: els.reviewThreshold,
+  btnRefreshReview: els.btnRefreshReview,
+  reviewList: els.reviewList,
+  performanceChart: els.performanceChart,
+  performanceMean: els.performanceMean,
+  performanceStd: els.performanceStd,
+  historyModal: els.historyModal,
+  historyDetail: els.historyDetail,
+  btnCloseHistory: els.btnCloseHistory,
+  btnRetryHistory: els.btnRetryHistory,
+  btnViewHistorySolution: els.btnViewHistorySolution,
+  btnDeleteHistory: els.btnDeleteHistory,
+}, {
+  log: (msg, level) => log(msg, level),
+  getRecords: () => recentSolves,
+  onRetry: (scramble) => {
+    currentScramble = scramble;
+    scrambleProgress = createScrambleProgress(currentScramble);
+    performedScrambleMoves = [];
+    scrambleStateVerified = false;
+    awaitingNextScramble = false;
+    postSolveMove = null;
+    timer.reset();
+    timerDisplay.stopDisplay();
+    timerDisplay.updateDisplay();
+    els.btnStart.disabled = false;
+    els.btnStop.disabled = true;
+    cubeVisualizer.reset();
+    showScrambleStage();
+    renderScrambleProgress();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    log("重试历史打乱");
+  },
+  onDelete: (index) => {
+    historyStore.remove(index);
+    recentSolves = historyStore.all;
+    historyController.render();
+    log("已删除历史记录");
+  },
+  onSave: () => historyStore.save(),
+  renderBlockPracticeStats: () => renderBlockPracticeStats(),
+});
 const cubeVisualizer = new CubeVisualizer(els.cube3d);
+const timerDisplay = new TimerDisplayController(timer, {
+  timerDisplay: els.timerDisplay,
+  inspectionStatus: els.inspectionStatus,
+  btnStart: els.btnStart,
+}, {
+  isPracticeObservation: () => isPracticeObservation(),
+  getInspectionSettings: () => { const s = settingsController.getSettings(); return { enabled: s.inspectionEnabled, seconds: s.inspectionSeconds }; },
+  onShowTimerStage: () => showTimerStage(),
+  log: (msg, level) => log(msg, level),
+});
 let analysisPreviewPlayers: SolveReplayPlayer[] = [];
 let currentScramble = "";
+let selectedCrossSteps: number | null = null;
+let showFullScramble = false;
+let activeCrossScrambleWorker: Worker | null = null;
+let scrambleGenerationId = 0;
 let scrambleProgress: ScrambleProgress = createScrambleProgress("");
 let performedScrambleMoves: string[] = [];
 let scrambleStateVerified = false;
 const historyStore = HistoryStore.load();
 let recentSolves: AnalysisInput[] = historyStore.all;
-const GAN_MAC_KEY = "cubemind:gan-mac";
-const MOYU_MAC_KEY = "cubemind:moyu-mac";
-const FORMULA_MASTERED_KEY = "cubemind:formula-mastered";
-const SCORE_DISPLAY_MODE_KEY = "cubemind:score-display-mode";
-const REVIEW_THRESHOLD_KEY = "cubemind:review-threshold";
-const HISTORY_GROUPS_KEY = "cubemind:history-groups";
-
-interface HistoryGroup {
-  id: string;
-  name: string;
-  createdAt: number;
-}
-
-const SYSTEM_HISTORY_GROUPS = [
-  { id: "normal", name: "普通计时" },
-  { id: "all", name: "全部记录（含练习）" },
-  { id: "practice", name: "全部练习" },
-  { id: "practice-formula", name: "公式练习" },
-  { id: "practice-cross", name: "Cross 练习" },
-  { id: "practice-f2l", name: "F2L 练习" },
-  { id: "practice-cross-f2l", name: "Cross + F2L 练习" },
-] as const;
-const SYSTEM_HISTORY_GROUP_IDS = new Set<string>(SYSTEM_HISTORY_GROUPS.map((group) => group.id));
-
-let historyGroups: HistoryGroup[] = [];
-let selectedHistoryGroup = "normal";
 let blockPracticeMode: "cross" | "f2l" | "cross-f2l" | null = null;
 let blockPracticeCompleted = false;
 
-interface FormulaLibraryState {
-  category: FormulaCategory;
-  search: string;
-  difficulty: number | null;
-  tag: string;
-  hideMastered: boolean;
-}
-
-const libraryState: FormulaLibraryState = {
-  category: "F2L",
-  search: "",
-  difficulty: null,
-  tag: "",
-  hideMastered: false,
-};
-
-let masteredFormulaIds = new Set<string>();
-const selectedFormulaVariants = new Map<string, number>();
-const speedCubeDbVariants = new Map<string, string[][]>();
-let isLoadingSpeedCubeDbVariants = false;
-let hasLoadedSpeedCubeDbVariants = false;
-let currentBottleneck: string = ""; // 用于公式库推荐
 let pendingPracticeFormula: Formula | null = null;
 let pendingPracticeCandidates: Formula[] = [];
 type FormulaPracticeOrder = "random" | "sequential";
@@ -228,22 +299,14 @@ interface FormulaPracticeSession {
 }
 let practiceSession: FormulaPracticeSession | null = null;
 let practiceNeedsRetry = false;
+let practiceCaseVerified = false;
 let awaitingNextScramble = false;
 let postSolveMove: string | null = null;
-let selectedHistoryIndex: number | null = null;
 let currentSolveEvents: CubeMove[] = [];
 let isFinalizingSolve = false;
 let lastDeviceMoveCnt: number | undefined;
-let inspectionMode: "idle" | "limited" | "free" | "ready" = "idle";
-let inspectionEndsAt = 0;
-let inspectionInterval: number | null = null;
-let inspectionStartedAt = 0;
 let pendingInspectionPenalty: InspectionPenalty = "none";
-const historyDetailController = new HistoryDetailController({
-  detail: els.historyDetail,
-  retryButton: els.btnRetryHistory,
-  solutionButton: els.btnViewHistorySolution,
-}, () => isDetailedScoreMode());
+let pendingInspectionDuration: number = 0;
 
 // ====== 日志 ======
 function log(msg: string, type: "info" | "move" | "error" = "info"): void {
@@ -255,50 +318,51 @@ function log(msg: string, type: "info" | "move" | "error" = "info"): void {
   els.log.scrollTop = els.log.scrollHeight;
 }
 
-function applyAppSettings(settings: AppSettings): void {
-  appSettings = normalizeAppSettings(settings);
-  document.body.dataset.uiTheme = appSettings.theme;
-  els.settingCrossSteps.value = String(appSettings.crossMaxSteps);
-  els.settingInspectionEnabled.checked = appSettings.inspectionEnabled;
-  els.settingInspectionSeconds.value = String(appSettings.inspectionSeconds);
-  els.settingInspectionSeconds.disabled = !appSettings.inspectionEnabled;
-  els.settingTheme.value = appSettings.theme;
-}
-
-function openSettings(): void {
-  applyAppSettings(appSettings);
-  els.settingsModal.classList.add("open");
-}
-
-function saveSettings(): void {
-  const settings = normalizeAppSettings({
-    crossMaxSteps: Number(els.settingCrossSteps.value),
-    inspectionEnabled: els.settingInspectionEnabled.checked,
-    inspectionSeconds: Number(els.settingInspectionSeconds.value),
-    theme: els.settingTheme.value as AppSettings["theme"],
-  });
-  saveAppSettings(localStorage, settings);
-  applyAppSettings(settings);
-  els.settingsModal.classList.remove("open");
-  log(`设置已保存：十字 ${settings.crossMaxSteps} 步，${settings.inspectionEnabled ? `${settings.inspectionSeconds} 秒观察` : "关闭正常观察"}`);
-}
-
 // ====== 打乱 ======
-function newScramble(): void {
-  if (practiceSession) {
-    preparePracticeScramble();
-    return;
-  }
-  currentScramble = scramble333(20);
+function setScrambleGenerationPending(pending: boolean): void {
+  els.btnNextScramble.disabled = pending;
+  els.btnNextScramble.textContent = pending ? "生成中…" : "新打乱";
+  els.crossStepSelector.querySelectorAll<HTMLButtonElement>("[data-cross-steps]").forEach((button) => {
+    button.disabled = pending;
+  });
+}
+
+function generateCrossScrambleInWorker(targetSteps: number): Promise<string> {
+  activeCrossScrambleWorker?.terminate();
+  const worker = new Worker("./cross-scramble-worker.js");
+  activeCrossScrambleWorker = worker;
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent<{ scramble?: string; error?: string }>) => {
+      worker.terminate();
+      if (activeCrossScrambleWorker === worker) activeCrossScrambleWorker = null;
+      if (event.data.scramble) resolve(event.data.scramble);
+      else reject(new Error(event.data.error ?? "Cross 打乱生成失败"));
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      if (activeCrossScrambleWorker === worker) activeCrossScrambleWorker = null;
+      reject(new Error(event.message || "Cross 打乱 Worker 无法启动"));
+    };
+    worker.postMessage({ targetFace: "U", targetSteps });
+  });
+}
+
+function generatePreferredScramble(): Promise<string> {
+  if (selectedCrossSteps === null) return Promise.resolve(scramble333(20));
+  return generateCrossScrambleInWorker(selectedCrossSteps);
+}
+
+function loadGeneratedScramble(scramble: string): void {
+  currentScramble = scramble.trim();
   scrambleProgress = createScrambleProgress(currentScramble);
   performedScrambleMoves = [];
   scrambleStateVerified = false;
   awaitingNextScramble = false;
   postSolveMove = null;
   timer.reset();
-  endInspection();
-  stopTimerDisplay();
-  updateTimerDisplay();
+  timerDisplay.endInspection();
+  timerDisplay.stopDisplay();
+  timerDisplay.updateDisplay();
   // 新一把打乱默认从已还原状态开始，避免 3D 状态与当前打乱脱节。
   cubeVisualizer.reset();
   els.btnStart.disabled = true;
@@ -306,7 +370,30 @@ function newScramble(): void {
   showScrambleStage();
   renderScrambleProgress();
   void sendDiagnosticEvent({ kind: "scramble", occurredAt: Date.now(), scramble: currentScramble, mode: "normal" });
-  log(`生成打乱: ${currentScramble.slice(0, 40)}...`);
+  log(`生成打乱: ${currentScramble.slice(0, 40)}${currentScramble.length > 40 ? "..." : ""}`);
+}
+
+async function newScramble(): Promise<void> {
+  if (practiceSession) {
+    preparePracticeScramble();
+    return;
+  }
+  const generationId = ++scrambleGenerationId;
+  activeCrossScrambleWorker?.terminate();
+  activeCrossScrambleWorker = null;
+  setScrambleGenerationPending(selectedCrossSteps !== null);
+  try {
+    const scramble = await generatePreferredScramble();
+    if (generationId === scrambleGenerationId) loadGeneratedScramble(scramble);
+  } catch (error) {
+    console.error("[scramble] 指定 Cross 打乱失败:", error);
+    if (generationId === scrambleGenerationId) {
+      log("指定 Cross 暂时未生成，已回退为 WCA 随机打乱", "error");
+      loadGeneratedScramble(scramble333(20));
+    }
+  } finally {
+    if (generationId === scrambleGenerationId) setScrambleGenerationPending(false);
+  }
 }
 
 function prepareBlockScramble(mode: "cross" | "f2l" | "cross-f2l"): void {
@@ -321,9 +408,9 @@ function prepareBlockScramble(mode: "cross" | "f2l" | "cross-f2l"): void {
   awaitingNextScramble = false;
   postSolveMove = null;
   timer.reset();
-  endInspection();
-  stopTimerDisplay();
-  updateTimerDisplay();
+  timerDisplay.endInspection();
+  timerDisplay.stopDisplay();
+  timerDisplay.updateDisplay();
   cubeVisualizer.reset();
   els.btnStart.disabled = true;
   els.btnStop.disabled = true;
@@ -342,13 +429,14 @@ function preparePracticeScramble(): void {
   awaitingNextScramble = false;
   postSolveMove = null;
   timer.reset();
-  endInspection();
-  stopTimerDisplay();
-  updateTimerDisplay();
+  timerDisplay.endInspection();
+  timerDisplay.stopDisplay();
+  timerDisplay.updateDisplay();
   els.btnStart.disabled = true;
   els.btnStop.disabled = true;
   cubeVisualizer.reset();
   practiceNeedsRetry = false;
+  practiceCaseVerified = false;
   showScrambleStage();
   renderScrambleProgress();
   void sendDiagnosticEvent({ kind: "scramble", occurredAt: Date.now(), scramble: currentScramble, mode: "formula", formulaId: practiceSession.formula.id });
@@ -388,13 +476,14 @@ function completePracticeAttempt(): boolean {
 function finishPractice(completed = false): void {
   if (completed && practiceSession) renderPracticeCompletion(practiceSession);
   practiceSession = null;
-  endInspection();
+  practiceCaseVerified = false;
+  timerDisplay.endInspection();
   els.practiceBanner.hidden = true;
   awaitingNextScramble = false;
   postSolveMove = null;
   timer.reset();
-  stopTimerDisplay();
-  updateTimerDisplay();
+  timerDisplay.stopDisplay();
+  timerDisplay.updateDisplay();
   showScrambleStage();
 }
 
@@ -475,10 +564,6 @@ function formatPracticeTime(value: number | null): string {
   return value === null ? "—" : `${(value / 1000).toFixed(2)}s`;
 }
 
-function isDeviceExecutableFormula(formula: Formula): boolean {
-  return isFormulaDevicePracticeSafe(formula);
-}
-
 function renderBlockPracticeStats(): void {
   const records = getPracticeRecords();
   const cross = getPracticeSummary(records, "cross");
@@ -498,86 +583,40 @@ function renderBlockPracticeStats(): void {
 }
 
 function renderScrambleProgress(): void {
-  const remaining = scrambleProgress.remaining.map(
+  if (showFullScramble) {
+    const completedCount = scrambleProgress.completed.length;
+    const allMoves = scrambleProgress.completed.concat(scrambleProgress.remaining);
+    els.scrambleText.innerHTML = allMoves.map((move, index) => {
+      const isCompleted = index < completedCount;
+      const isNext = !isCompleted && index === completedCount;
+      return `<span class="scramble-move ${isCompleted ? "completed" : ""} ${isNext ? "next" : ""}">${escapeHtml(move)}</span>`;
+    }).join(" ");
+    return;
+  }
+
+  // 默认只展示尚待执行的一组步骤，避免已执行步骤与完整打乱混在一起。
+  els.scrambleText.innerHTML = scrambleProgress.remaining.map(
     (move, index) => `<span class="scramble-move ${index === 0 ? "next" : ""}">${escapeHtml(move)}</span>`
-  );
-  // 打乱区只展示尚待执行的一组步骤，避免已执行步骤与完整打乱混在一起而看似出现第二条打乱。
-  els.scrambleText.innerHTML = remaining.join(" ");
+  ).join(" ");
 }
 
 function showScrambleStage(): void {
-  els.scrambleStage.hidden = false;
-  els.timerStage.hidden = true;
+  // 训练舞台布局：打乱与计时器始终同屏可见，无需切换
 }
 
 function isPracticeObservation(): boolean {
   return practiceSession !== null || blockPracticeMode !== null;
 }
 
-function beginInspection(): void {
-  showTimerStage();
-  els.btnStart.disabled = true;
-  pendingInspectionPenalty = "none";
-  inspectionStartedAt = 0;
-  if (isPracticeObservation()) {
-    inspectionMode = "free";
-    inspectionEndsAt = 0;
-    els.inspectionStatus.hidden = false;
-    els.inspectionStatus.textContent = "自由观察 · 转动第一步后开始计时";
-    els.timerDisplay.textContent = "观察";
-    log("进入练习自由观察：转动第一步开始计时");
-    return;
-  }
-  if (!appSettings.inspectionEnabled || appSettings.inspectionSeconds === 0) {
-    inspectionMode = "ready";
-    els.inspectionStatus.hidden = false;
-    els.inspectionStatus.textContent = "准备就绪 · 转动第一步后开始计时";
-    els.timerDisplay.textContent = "0.00s";
-    log("打乱完成：转动第一步开始计时");
-    return;
-  }
-  inspectionMode = "limited";
-  inspectionStartedAt = Date.now();
-  inspectionEndsAt = inspectionStartedAt + appSettings.inspectionSeconds * 1000;
-  renderInspectionCountdown();
-  inspectionInterval = window.setInterval(renderInspectionCountdown, 50);
-  log(`进入 ${appSettings.inspectionSeconds} 秒观察：转动第一步开始计时`);
-}
-
-function renderInspectionCountdown(): void {
-  if (inspectionMode !== "limited") return;
-  const outcome = getInspectionOutcome(Date.now() - inspectionStartedAt, appSettings.inspectionSeconds);
-  els.inspectionStatus.hidden = false;
-  els.inspectionStatus.textContent = `观察 ${outcome.display} · 转动第一步后开始计时`;
-  els.timerDisplay.textContent = outcome.display;
-}
-
-function stopInspectionCountdown(): void {
-  if (inspectionInterval !== null) {
-    clearInterval(inspectionInterval);
-    inspectionInterval = null;
-  }
-}
-
-function endInspection(): void {
-  stopInspectionCountdown();
-  inspectionMode = "idle";
-  inspectionEndsAt = 0;
-  inspectionStartedAt = 0;
-  els.inspectionStatus.hidden = true;
-  els.inspectionStatus.textContent = "";
-}
-
 function showTimerStage(): void {
-  els.scrambleStage.hidden = true;
-  els.timerStage.hidden = false;
+  // 训练舞台布局：打乱与计时器始终同屏可见，无需切换
 }
 
 function resetSessionForSyncedCube(): void {
   timer.reset();
   lastDeviceMoveCnt = undefined;
-  stopTimerDisplay();
-  updateTimerDisplay();
+  timerDisplay.stopDisplay();
+  timerDisplay.updateDisplay();
   els.btnStart.disabled = false;
   els.btnStop.disabled = true;
   cubeVisualizer.reset();
@@ -586,7 +625,7 @@ function resetSessionForSyncedCube(): void {
 
 function confirmCubeResetAfterConnect(deviceLabel: string): void {
   const shouldReset = window.confirm(
-    `${deviceLabel} 已连接。\n\n请先把实体智能魔方复原到已还原状态。\n点击“确定”后，CubeMind 会把 3D 魔方重置为已还原并生成新打乱。`
+    `${deviceLabel} 已连接。\n\n请先把实体智能魔方复原到已还原状态。\n点击"确定"后，CubeMind 会把 3D 魔方重置为已还原并生成新打乱。`
   );
 
   if (shouldReset) {
@@ -605,9 +644,7 @@ function updateScrambleProgress(move: string): void {
   scrambleProgress = applyScrambleMove(scrambleProgress, move);
   renderScrambleProgress();
 
-  if (scrambleProgress.lastMoveCorrect === true && scrambleProgress.remaining.length === 0) {
-    beginInspection();
-  } else if (scrambleProgress.lastMoveCorrect === false) {
+  if (scrambleProgress.lastMoveCorrect === false) {
     log(`打乱转错：期望 ${expected}，已加入纠错步`, "error");
   }
 }
@@ -618,9 +655,31 @@ function verifyCompletedScramble(): void {
     log("打乱状态已核验，可转动第一步开始计时");
     return;
   }
-  log("打乱最终状态与目标不一致：请将实体魔方复原后重新生成打乱，本把不会开始计时", "error");
+  log("打乱终态回放校验异常，已记录诊断；仍可转动第一步开始计时", "error");
 }
-els.btnScramble.onclick = newScramble;
+els.crossStepSelector.querySelectorAll<HTMLButtonElement>("[data-cross-steps]").forEach((button) => {
+  button.onclick = () => {
+    const rawValue = button.dataset.crossSteps;
+    selectedCrossSteps = rawValue && rawValue !== "random" ? Number(rawValue) : null;
+    els.crossStepSelector.querySelectorAll<HTMLButtonElement>("[data-cross-steps]").forEach((item) => {
+      item.classList.toggle("active", item === button);
+    });
+    log(selectedCrossSteps === null ? "已选择随机 Cross 打乱" : `已选择白色 Cross ${selectedCrossSteps} 步打乱`);
+    newScramble();
+  };
+});
+els.btnNextScramble.onclick = newScramble;
+els.btnToggleScrambleSteps.onclick = () => {
+  showFullScramble = !showFullScramble;
+  els.btnToggleScrambleSteps.textContent = showFullScramble ? "仅看剩余" : "显示完整";
+  renderScrambleProgress();
+};
+els.btnToggleCrossSettings.onclick = () => {
+  const isExpanded = els.btnToggleCrossSettings.getAttribute("aria-expanded") === "true";
+  els.btnToggleCrossSettings.setAttribute("aria-expanded", String(!isExpanded));
+  els.btnToggleCrossSettings.textContent = isExpanded ? "＋" : "−";
+  els.crossTrainingSettings.hidden = isExpanded;
+};
 els.btnSolveCross.onclick = () => {
   if (!currentScramble) {
     els.crossSolution.hidden = false;
@@ -633,12 +692,12 @@ els.btnSolveCross.onclick = () => {
   window.setTimeout(() => {
     try {
       const targetFace = "U";
-      const solution = solveCross(currentScramble, targetFace, appSettings.crossMaxSteps);
+      const solution = solveCross(currentScramble, targetFace, settingsController.getSettings().crossMaxSteps);
       const displaySolution = convertSolutionForWhiteDown(solution, "F");
       const difficulty = solution.length <= 4 ? "简单" : solution.length <= 6 ? "中等" : "困难";
       els.crossSolution.innerHTML = solution.length > 0
         ? `白色 Cross（绿面前）：<code>${escapeHtml(displaySolution.join(" "))}</code>（${solution.length} 步，${difficulty}）`
-        : `未在 ${appSettings.crossMaxSteps} 步搜索范围内找到十字解法。`;
+        : `未在 ${settingsController.getSettings().crossMaxSteps} 步搜索范围内找到十字解法。`;
     } catch (error) {
       console.error("[cross-solver] 求解失败:", error);
       els.crossSolution.textContent = "十字求解失败，请重新生成打乱。";
@@ -703,76 +762,10 @@ els.btnSolveXCross.onclick = () => {
     }
   }, 0);
 };
-els.scoreDisplayMode.value = localStorage.getItem(SCORE_DISPLAY_MODE_KEY) === "detailed" ? "detailed" : "simple";
-const savedReviewThreshold = Number(localStorage.getItem(REVIEW_THRESHOLD_KEY));
-if (Number.isFinite(savedReviewThreshold) && savedReviewThreshold >= 0) {
-  els.reviewThreshold.value = String(savedReviewThreshold);
-}
-els.scoreDisplayMode.onchange = () => {
-  localStorage.setItem(SCORE_DISPLAY_MODE_KEY, els.scoreDisplayMode.value);
-  renderHistory();
-  if (selectedHistoryIndex !== null && recentSolves[selectedHistoryIndex]) {
-    renderHistoryDetail(recentSolves[selectedHistoryIndex], false);
-  }
-};
-els.reviewThreshold.onchange = () => {
-  localStorage.setItem(REVIEW_THRESHOLD_KEY, els.reviewThreshold.value);
-  renderReviewCandidates();
-};
-els.btnRefreshReview.onclick = () => {
-  localStorage.setItem(REVIEW_THRESHOLD_KEY, els.reviewThreshold.value);
-  renderReviewCandidates();
-};
-els.historyGroup.onchange = () => {
-  selectedHistoryGroup = els.historyGroup.value;
-  renderHistory();
-};
-els.btnNewHistoryGroup.onclick = () => {
-  const name = window.prompt("请输入历史分组名称");
-  if (!name?.trim()) return;
-  const group: HistoryGroup = { id: `group-${Date.now()}`, name: name.trim(), createdAt: Date.now() };
-  historyGroups.push(group);
-  selectedHistoryGroup = group.id;
-  saveHistoryGroups();
-  renderHistory();
-};
-els.btnDeleteHistoryGroup.onclick = () => {
-  if (SYSTEM_HISTORY_GROUP_IDS.has(selectedHistoryGroup)) return;
-  const group = historyGroups.find((item) => item.id === selectedHistoryGroup);
-  if (!group || !window.confirm(`删除分组“${group.name}”？其中的成绩会保留，但移到未分组。`)) return;
-  recentSolves.forEach((solve) => {
-    if (solve.groupId === group.id) delete solve.groupId;
-  });
-  historyGroups = historyGroups.filter((item) => item.id !== group.id);
-  selectedHistoryGroup = "normal";
-  saveHistoryGroups();
-  historyStore.save();
-  renderHistory();
-};
-
-function downloadHistory(content: string, filename: string, mimeType: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-els.btnExportHistoryJson.onclick = () => {
-  downloadHistory(formatHistoryJson(recentSolves), "cubemind-history.json", "application/json;charset=utf-8");
-  log(`已导出 ${recentSolves.length} 条历史记录（JSON）`);
-};
-els.btnExportHistoryCsv.onclick = () => {
-  downloadHistory(formatHistoryCsv(recentSolves), "cubemind-history.csv", "text/csv;charset=utf-8");
-  log(`已导出 ${recentSolves.length} 条历史记录（CSV）`);
-};
-els.btnOpenLibrary.onclick = () => showLibrary(libraryState.category);
-
 function startDailyPractice(): void {
   const candidates = (["F2L", "OLL", "PLL"] as FormulaCategory[])
     .flatMap((category) => listByCategory(category))
-    .filter(isDeviceExecutableFormula)
+    .filter(isFormulaDevicePracticeSafe)
     .sort((a, b) => a.id.localeCompare(b.id));
   const formula = selectPracticeFormula(candidates, getPracticeRecords());
   if (!formula) {
@@ -784,6 +777,13 @@ function startDailyPractice(): void {
   log(`开始今日智能训练：${formula.id}，共 10 题`);
 }
 
+function getFormulaDisplayName(formula: Formula): string {
+  if (formula.category !== "F2L") return formula.name;
+  const match = /^f2l-(\d+)$/i.exec(formula.id);
+  if (!match) return formula.name;
+  return `F2L 第 ${Number(match[1])} 例`;
+}
+
 function openCategoryPractice(category: "OLL" | "PLL" | "OLL-PLL"): void {
   const allFormulas = category === "OLL-PLL"
     ? [...listByCategory("OLL"), ...listByCategory("PLL")]
@@ -792,8 +792,8 @@ function openCategoryPractice(category: "OLL" | "PLL" | "OLL-PLL"): void {
   const onlyUnmastered = els.formulaPracticeUnmastered.checked;
   const formulas = allFormulas.filter((formula) =>
     formula.difficulty <= maxDifficulty
-    && (!onlyUnmastered || !masteredFormulaIds.has(formula.id))
-    && isDeviceExecutableFormula(formula));
+    && (!onlyUnmastered || !formulaLibrary.isMastered(formula.id))
+    && isFormulaDevicePracticeSafe(formula));
   const order = els.formulaPracticeOrder.value as FormulaPracticeOrder;
   const sorted = [...formulas].sort((a, b) => a.id.localeCompare(b.id));
   const formula = order === "sequential" ? sorted[0] : selectPracticeFormula(sorted, getPracticeRecords());
@@ -828,52 +828,28 @@ els.practiceModeModal.querySelectorAll<HTMLButtonElement>("[data-block-practice-
   };
 });
 
-// ====== 计时器 UI ======
-function updateTimerDisplay(): void {
-  const ms = timer.getDuration();
-  const sec = (ms / 1000).toFixed(2);
-  els.timerDisplay.textContent = `${sec}s`;
-}
-
-let displayInterval: number | null = null;
-function startTimerDisplay(): void {
-  if (displayInterval) return;
-  displayInterval = window.setInterval(updateTimerDisplay, 50);
-}
-function stopTimerDisplay(): void {
-  if (displayInterval) {
-    clearInterval(displayInterval);
-    displayInterval = null;
-  }
-}
-
+// ====== 计时器 ======
 function startSolveTimer(fromMove = false): void {
-  if (timer.getState().isRunning) return;
-  if (scrambleProgress.remaining.length > 0) {
-    log("请先按提示完成打乱，再开始计时", "error");
+  if (timer.getState().isRunning) {
+    log("计时器已在运行中", "error");
     return;
   }
-  if (!scrambleStateVerified) {
-    log("打乱状态未通过核验，请复原实体魔方后重新生成打乱", "error");
+  if (scrambleProgress.remaining.length > 0) {
+    log(`打乱未完成，剩余 ${scrambleProgress.remaining.length} 步`, "error");
     return;
   }
   if (!fromMove) {
     log("请通过转动第一步开始计时", "error");
     return;
   }
-  if (inspectionMode === "limited" && inspectionStartedAt > 0) {
-    const outcome = getInspectionOutcome(Date.now() - inspectionStartedAt, appSettings.inspectionSeconds);
-    pendingInspectionPenalty = outcome.penalty;
-    if (outcome.penalty === "plus2") log("观察超时：本把成绩将加 2 秒", "error");
-    if (outcome.penalty === "dnf") log("观察超过 DNF 时限：本把将记录为 DNF", "error");
-  }
-  endInspection();
+  pendingInspectionPenalty = timerDisplay.consumePenalty();
+  pendingInspectionDuration = timerDisplay.getInspectionDuration();
   timer.start();
   currentSolveEvents = [];
   lastDeviceMoveCnt = undefined;
   els.btnStart.disabled = true;
   els.btnStop.disabled = false;
-  startTimerDisplay();
+  timerDisplay.startDisplay();
   log("Timer started");
 }
 
@@ -888,8 +864,8 @@ async function stopSolveTimerAndAnalyze(waitForLateMove = false): Promise<void> 
   timer.stop(stopRequestedAt);
   els.btnStart.disabled = false;
   els.btnStop.disabled = true;
-  stopTimerDisplay();
-  updateTimerDisplay();
+  timerDisplay.stopDisplay();
+  timerDisplay.updateDisplay();
   log("Timer stopped");
   try {
     await onSolveComplete();
@@ -903,12 +879,17 @@ els.btnStart.onclick = () => {
   startSolveTimer();
 };
 
-els.btnOpenSettings.onclick = openSettings;
-els.btnCloseSettings.onclick = () => els.settingsModal.classList.remove("open");
-els.btnSaveSettings.onclick = saveSettings;
-els.settingInspectionEnabled.onchange = () => {
-  els.settingInspectionSeconds.disabled = !els.settingInspectionEnabled.checked;
-};
+/** 蓝牙断连时若正在计时，中止当前 solve 并提示用户（不完整数据不做分析） */
+function handleBleDisconnectMidSolve(deviceName: string): void {
+  if (!timer.getState().isRunning) return;
+  timer.stop();
+  timerDisplay.stopDisplay();
+  timerDisplay.updateDisplay();
+  els.btnStart.disabled = false;
+  els.btnStop.disabled = true;
+  isFinalizingSolve = false;
+  log(`⚠ ${deviceName} 在计时过程中断开，本把成绩已作废。请重连后重新开始。`, "error");
+}
 
 els.btnStop.onclick = () => {
   void stopSolveTimerAndAnalyze(true);
@@ -916,12 +897,12 @@ els.btnStop.onclick = () => {
 
 els.btnReset.onclick = () => {
   timer.reset();
-  endInspection();
+  timerDisplay.endInspection();
   blockPracticeMode = null;
   awaitingNextScramble = false;
   postSolveMove = null;
   showScrambleStage();
-  updateTimerDisplay();
+  timerDisplay.updateDisplay();
   els.btnStart.disabled = false;
   els.btnStop.disabled = true;
   els.cfopOutput.textContent = "（等待本次解法）";
@@ -953,22 +934,30 @@ function onCubeMove(move: CubeMove): void {
     return;
   }
 
-  const shouldStartSolve = !timer.getState().isRunning && scrambleProgress.remaining.length === 0 && scrambleStateVerified;
+  const shouldStartSolve = !timer.getState().isRunning && scrambleProgress.remaining.length === 0;
   const wasCompletingScramble = scrambleProgress.remaining.length > 0;
   if (wasCompletingScramble) performedScrambleMoves.push(move.move);
   updateScrambleProgress(move.move);
 
-  if (wasCompletingScramble && scrambleProgress.remaining.length === 0) verifyCompletedScramble();
+  if (wasCompletingScramble && scrambleProgress.remaining.length === 0) {
+    verifyCompletedScramble();
+    if (canBeginInspection(scrambleProgress.remaining.length, scrambleStateVerified)) {
+      if (!scrambleStateVerified) log("打乱动作序列已完成；终态回放校验异常已记录，但不会阻止本把计时", "error");
+      timerDisplay.beginInspection();
+    }
+  }
 
-  if (practiceSession?.formula.category === "F2L" && wasCompletingScramble && scrambleProgress.remaining.length === 0) {
+  if (practiceSession && wasCompletingScramble && scrambleProgress.remaining.length === 0) {
     const facelets = cubeVisualizer.getFacelets();
-    const match = recognizeF2lPracticeCase(facelets, practiceSession.formula) ?? recognizeF2lCase(facelets);
+    const match = recognizeFormulaPracticeCase(facelets, practiceSession.formula);
+    practiceCaseVerified = match?.formulaId === practiceSession.formula.id;
     if (match?.formulaId === practiceSession.formula.id) {
-      log(`F2L 识别：${match.formulaId} · ${match.name}（精确匹配）`);
-    } else if (match) {
-      log(`F2L 起始 case 不匹配：期望 ${practiceSession.formula.id}，识别为 ${match.formulaId}`, "error");
+      log(`${practiceSession.formula.category} 识别：${match.formulaId} · ${match.name}（精确匹配）`);
     } else {
-      log(`F2L 起始 case 未能可靠匹配：期望 ${practiceSession.formula.id}`, "error");
+      const fallback = practiceSession.formula.category === "F2L" ? recognizeF2lCase(facelets) : null;
+      log(fallback
+        ? `${practiceSession.formula.category} 起始 case 不匹配：期望 ${practiceSession.formula.id}，识别为 ${fallback.formulaId}`
+        : `${practiceSession.formula.category} 起始 case 未能可靠匹配：期望 ${practiceSession.formula.id}`, "error");
     }
   }
 
@@ -986,7 +975,8 @@ function onCubeMove(move: CubeMove): void {
   const shouldStopCross = blockPracticeMode === "cross" && cubeVisualizer.isCrossSolved("U");
   const shouldStopBlock = (blockPracticeMode === "f2l" || blockPracticeMode === "cross-f2l") && timer.getState().moves.length > 0 && blockPhase === "f2l";
   const shouldStopFormulaF2l = practiceSession?.formula.category === "F2L" && timer.getState().moves.length > 0 && blockPhase === "f2l";
-  if (timer.getState().isRunning && timer.getState().moves.length > 0 && (cubeVisualizer.isSolved() || shouldStopBlock || shouldStopCross || shouldStopFormulaF2l)) {
+  const shouldStopFormulaOll = practiceSession?.formula.category === "OLL" && timer.getState().moves.length > 0 && blockPhase === "oll";
+  if (timer.getState().isRunning && timer.getState().moves.length > 0 && (cubeVisualizer.isSolved() || shouldStopBlock || shouldStopCross || shouldStopFormulaF2l || shouldStopFormulaOll)) {
     if (shouldStopBlock || shouldStopCross) blockPracticeCompleted = true;
     void stopSolveTimerAndAnalyze();
   }
@@ -1003,56 +993,58 @@ async function onSolveComplete(): Promise<void> {
 
   const moveStrs = state.moves.map((m) => m.move);
   const moveTimes = state.moves.map((m) => m.timestamp);
+  const hardwareFacelets = await bleController.requestCurrentFacelets();
+  const physicalState = hardwareFacelets === null
+    ? "unavailable"
+    : hardwareFacelets === SOLVED_FACELET ? "confirmed-solved" : "confirmed-unsolved";
   const validation = validateSolve(scrambleProgress.completed, currentSolveEvents);
+  const reliableMoveStream = isMoveStreamReliable(validation);
+  const analysisEligible = validation.isSolved && reliableMoveStream;
+  if (physicalState === "confirmed-solved" && !analysisEligible) {
+    log("实体魔方已确认复原；本把计入成绩，但动作流不完整，不生成 CFOP/AI 分析", "error");
+  } else if (physicalState === "confirmed-unsolved") {
+    log("设备状态回读确认未复原，本把不计入成绩", "error");
+  }
   const prettySummary = summarizePrettyReconstruction(currentSolveEvents);
   if (prettySummary) log(prettySummary);
 
-  log("🔍 开始 CFOP 阶段识别...");
-  const cfopResult: CfopResult = parseCfop(
-    moveStrs,
-    moveTimes,
-    scrambleProgress.completed,
-    state.startTime,
-    state.endTime,
-  );
-  const stepReview = analyzeSolveSteps(
-    moveStrs,
-    state.moves.map((move) => move.gapFromPrev),
-    cfopResult.segments,
-  );
-  const f2lSlotAnalysis = analyzeF2lSlots(
-    scrambleProgress.completed,
-    moveStrs,
-    moveTimes,
-    state.moves.map((move) => move.gapFromPrev),
-    state.startTime,
-    stepReview.pauseThreshold,
-  );
-  els.cfopOutput.textContent = `总用时: ${(timer.getDuration() / 1000).toFixed(2)}s\n${formatCfop(cfopResult)}\n\n${formatF2lSlotAnalysis(f2lSlotAnalysis)}`;
+  const cfopResult: CfopResult | null = analysisEligible ? parseCfop(
+    moveStrs, moveTimes, scrambleProgress.completed, state.startTime, state.endTime,
+  ) : null;
+  const stepReview = cfopResult ? analyzeSolveSteps(
+    moveStrs, state.moves.map((move) => move.gapFromPrev), cfopResult.segments,
+  ) : undefined;
+  const f2lSlotAnalysis = stepReview ? analyzeF2lSlots(
+    scrambleProgress.completed, moveStrs, moveTimes, state.moves.map((move) => move.gapFromPrev), state.startTime, stepReview.pauseThreshold,
+  ) : undefined;
+  els.cfopOutput.textContent = cfopResult && f2lSlotAnalysis
+    ? `总用时: ${(timer.getDuration() / 1000).toFixed(2)}s\n${formatCfop(cfopResult)}\n\n${formatF2lSlotAnalysis(f2lSlotAnalysis)}`
+    : "实体复原已确认，但动作流不完整。\n本把已计入 PB/AO；不生成 CFOP、F2L 槽位、停顿或 AI 分析。";
   els.cfopModal.classList.add("open");
-  log(`CFOP 识别完成: ${cfopResult.segments.length} 个阶段`);
+  if (cfopResult) log(`CFOP 识别完成: ${cfopResult.segments.length} 个阶段`);
 
-  const cross = cfopResult.segments.find((s) => s.stage === "cross");
-  const f2l = cfopResult.segments.find((s) => s.stage === "f2l");
-  const oll = cfopResult.segments.find((s) => s.stage === "oll");
-  const pll = cfopResult.segments.find((s) => s.stage === "pll");
+  const cross = cfopResult?.segments.find((s) => s.stage === "cross");
+  const f2l = cfopResult?.segments.find((s) => s.stage === "f2l");
+  const oll = cfopResult?.segments.find((s) => s.stage === "oll");
+  const pll = cfopResult?.segments.find((s) => s.stage === "pll");
   const previousSolve = recentSolves[recentSolves.length - 1];
   const totalDuration = timer.getDuration();
   const moveCount = state.moves.length;
   const crossMetrics = blockPracticeMode === "cross" ? calculateCrossMetrics(state.moves, totalDuration) : undefined;
   const practiceKind = practiceSession ? "formula" : blockPracticeMode ?? undefined;
-  const reliableMoveStream = isMoveStreamReliable(validation);
   const finalPhase = getCfopPhase(validation.finalFacelets);
-  const formulaPracticeSucceeded = reliableMoveStream && (practiceSession?.formula.category === "F2L"
+  const formulaPracticeSucceeded = reliableMoveStream && practiceCaseVerified && (practiceSession?.formula.category === "F2L"
     ? finalPhase === "f2l" || finalPhase === "oll" || finalPhase === "solved"
-    : validation.isSolved);
+    : practiceSession?.formula.category === "OLL"
+      ? finalPhase === "oll" || finalPhase === "solved"
+      : validation.isSolved);
   const blockPracticeSucceeded = reliableMoveStream && blockPracticeCompleted;
 
   const input: AnalysisInput = {
     completedAt: Date.now(),
     deviceName: els.deviceName.textContent?.trim() || "未标识魔方",
-    deviceId: ganCube.getMacAddress() ?? moyuCube.getMacAddress() ?? undefined,
-    groupId: !practiceKind && !SYSTEM_HISTORY_GROUP_IDS.has(selectedHistoryGroup) ? selectedHistoryGroup : undefined,
+    deviceId: bleController.getDeviceId(),
+    groupId: !practiceKind && !SYSTEM_HISTORY_GROUP_IDS.has(historyController.getSelectedGroup()) ? historyController.getSelectedGroup() : undefined,
     practiceMode: blockPracticeMode ?? undefined,
     practiceKind,
     practiceFormulaId: practiceSession?.formula.id,
@@ -1063,6 +1055,7 @@ async function onSolveComplete(): Promise<void> {
       ? Math.max(0, state.moves[0].timestamp - state.startTime) : undefined,
     executionDuration: practiceSession && state.moves[0]
       ? Math.max(0, state.endTime - state.moves[0].timestamp) : undefined,
+    inspectionDuration: pendingInspectionDuration > 0 ? pendingInspectionDuration : undefined,
     crossPracticeSteps: crossMetrics?.steps,
     crossPracticePauses: crossMetrics?.pauses,
     crossPracticeTps: crossMetrics?.tps,
@@ -1079,8 +1072,10 @@ async function onSolveComplete(): Promise<void> {
     f2lMoves: f2l?.moves.length ?? 0,
     ollMoves: oll?.moves.length ?? 0,
     pllMoves: pll?.moves.length ?? 0,
-    qualityStatus: validation.status,
-    qualityAnomalies: validation.anomalies,
+      qualityStatus: validation.status,
+      qualityAnomalies: validation.anomalies,
+      physicalState,
+      analysisEligible,
     penalty: pendingInspectionPenalty,
     moveGaps: state.moves.map((move) => move.gapFromPrev),
     f2lSlots: f2lSlotAnalysis?.slots.map((slot) => ({
@@ -1098,7 +1093,9 @@ async function onSolveComplete(): Promise<void> {
   };
 
   renderSolveSummary(input, previousSolve);
-  renderStepReview(stepReview);
+  if (stepReview) renderStepReview(stepReview);
+  else els.agentOutput.innerHTML = '<p class="placeholder">实体已确认复原；动作流不完整，本把仅保留成绩和 BLE 诊断，不生成复盘建议。</p>';
+  renderSolveTimeline(els.solveTimeline, input);
   recordSolve(input);
   const diagnosticMode: DiagnosticMode = practiceSession ? "formula" : blockPracticeMode ?? "normal";
   void sendDiagnosticEvent({
@@ -1123,8 +1120,10 @@ async function onSolveComplete(): Promise<void> {
       log(`专项练习失败：${practiceSession.formula.id}，可重新开始本次`, "error");
     }
   }
-  if (validation.isSolved && reliableMoveStream) {
+  if (analysisEligible) {
     log("状态回放确认已还原；成绩可用于 AO 与 AI");
+  } else if (physicalState === "confirmed-solved") {
+    log("实体状态确认已复原；成绩已计入 AO，动作流仅保留诊断用途");
   } else if (formulaPracticeSucceeded || blockPracticeSucceeded) {
     log("状态回放确认专项目标完成；已仅计入专项统计");
   } else {
@@ -1132,6 +1131,7 @@ async function onSolveComplete(): Promise<void> {
   }
   awaitingNextScramble = !isFormulaAttempt;
   postSolveMove = null;
+  pendingInspectionDuration = 0;
 
   log("成绩已保存；点击右下角 AI 可按需分析历史成绩");
 }
@@ -1156,15 +1156,84 @@ function renderStepReview(review: SolveReview): void {
   `;
 }
 
+function renderAnalysisInsight(input: AnalysisInput): string {
+  const stages = [
+    { label: "Cross", duration: input.crossDuration, moves: input.crossMoves },
+    { label: "F2L", duration: input.f2lDuration, moves: input.f2lMoves },
+    { label: "OLL", duration: input.ollDuration, moves: input.ollMoves },
+    { label: "PLL", duration: input.pllDuration, moves: input.pllMoves },
+  ];
+  const maxDuration = Math.max(...stages.map((stage) => stage.duration), 1);
+  const stageMarkup = stages.map((stage) => `
+    <div class="ai-stage-insight">
+      <div class="ai-stage-insight-head"><span>${stage.label}</span><strong>${(stage.duration / 1000).toFixed(2)}s</strong></div>
+      <div class="ai-stage-bar"><i style="width:${Math.max(4, Math.round((stage.duration / maxDuration) * 100))}%"></i></div>
+      <small>${stage.moves} 步</small>
+    </div>`).join("");
+
+  const slotMarkup = (input.f2lSlots ?? []).map((slot) => {
+    const duration = slot.duration === undefined ? "—" : `${(slot.duration / 1000).toFixed(2)}s`;
+    const pauses = slot.pauseCount > 0 ? `停顿 ${slot.pauseCount} 次` : "无长停顿";
+    const repairs = slot.repairCount > 0 ? ` · 修复 ${slot.repairCount}` : "";
+    return `<div class="ai-slot-insight"><strong>${slot.slot}</strong><span>${duration} · ${slot.moves ?? 0} 步</span><small>${pauses}${repairs}</small></div>`;
+  }).join("");
+  const slotSection = slotMarkup
+    ? `<div class="ai-slot-insights"><div class="ai-insight-label">F2L 四槽位</div><div class="ai-slot-grid">${slotMarkup}</div></div>`
+    : "";
+
+  return `
+    <section class="ai-insight-panel" aria-label="阶段与槽位数据">
+      <div class="ai-insight-heading"><div><span>本把数据画像</span><strong>阶段用时与动作密度</strong></div><em>${(input.tps ?? 0).toFixed(2)} TPS · ${input.moveCount ?? input.moves?.length ?? 0} 步</em></div>
+      <div class="ai-stage-insight-grid">${stageMarkup}</div>
+      ${slotSection}
+    </section>`;
+}
+
 function renderAgentResult(result: AnalysisResult, input: AnalysisInput): void {
-  currentBottleneck = extractBottleneck(result.bottleneck);
+  const currentBottleneck = extractBottleneck(result.bottleneck, result);
   analysisPreviewPlayers.forEach((player) => player.destroy());
   analysisPreviewPlayers = [];
   const scrambleMoves = input.scramble?.trim().split(/\s+/).filter(Boolean) ?? [];
   const solutionMoves = input.moves ?? [];
   const hasReplay = scrambleMoves.length > 0 && solutionMoves.length > 0;
+
+  const severityBadge = (severity: string): string => {
+    const labels: Record<string, string> = { high: "严重", medium: "中等", low: "轻微" };
+    return `<span class="severity-badge severity-${severity}">${labels[severity] ?? severity}</span>`;
+  };
+
+  const issuesHtml = (result.issues ?? []).map((issue: AnalysisIssue) => `
+    <li class="coaching-issue">
+      ${severityBadge(issue.severity)}
+      <span class="issue-stage">${escapeHtml(issue.stage)}</span>
+      <span class="issue-desc">${escapeHtml(issue.description)}</span>
+      ${issue.evidence ? `<small class="issue-evidence">${escapeHtml(issue.evidence)}</small>` : ""}
+    </li>`).join("");
+
+  const drillsHtml = (result.drills ?? []).map((drill: AnalysisDrill) => `
+    <li class="coaching-drill">
+      <strong>${escapeHtml(drill.title)}</strong>
+      <span>${escapeHtml(drill.detail)}</span>
+      ${drill.reps ? `<em class="drill-reps">${escapeHtml(drill.reps)}</em>` : ""}
+    </li>`).join("");
+
+  const nextFocusHtml = result.nextFocus
+    ? `<div class="coaching-focus"><span class="focus-label">下一把聚焦</span>${escapeHtml(result.nextFocus)}</div>`
+    : "";
+
+  const trendHtml = result.trend
+    ? `<div class="coaching-trend"><span class="trend-label">趋势</span>${escapeHtml(result.trend)}</div>`
+    : "";
+
+  const sourceTag = result.source === "fallback" ? '<span class="source-tag">本地规则</span>' : "";
+
   els.agentOutput.innerHTML = `
-    <div class="analysis-card">
+    <div class="analysis-card coaching-card">
+      ${renderAnalysisInsight(input)}
+      ${nextFocusHtml}
+      ${trendHtml}
+      ${issuesHtml ? `<div class="analysis-item"><div class="label">问题诊断 ${sourceTag}</div><ul class="coaching-issues">${issuesHtml}</ul></div>` : ""}
+      ${drillsHtml ? `<div class="analysis-item"><div class="label">训练处方</div><ul class="coaching-drills">${drillsHtml}</ul></div>` : ""}
       <div class="analysis-item bottleneck">
         <div class="label">🎯 瓶颈识别</div>
         <div class="value">${escapeHtml(result.bottleneck)}</div>
@@ -1210,7 +1279,8 @@ function renderAgentResult(result: AnalysisResult, input: AnalysisInput): void {
 
   // 绑定跳转按钮
   document.getElementById("btn-practice")?.addEventListener("click", () => {
-    openLibraryForBottleneck(currentBottleneck, input);
+    const stageDuration = getStageDurationForLibrary(input, currentBottleneck);
+    formulaLibrary.openForBottleneck(currentBottleneck, stageDuration, input.totalDuration);
   });
 
   log(`AI 分析完成：最近 ${input.analysisScope ?? 1} 把；${result.bottleneck}`);
@@ -1227,60 +1297,7 @@ function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-async function applyGanMac(showSuccessLog: boolean): Promise<void> {
-  const mac = els.ganMacInput.value.trim();
-  if (!mac) {
-    log("请输入 GAN MAC 地址，例如 AA:BB:CC:DD:EE:FF", "error");
-    return;
-  }
-
-  try {
-    await ganCube.updateMacAddress(mac);
-    const normalized = ganCube.getMacAddress() ?? mac;
-    els.ganMacInput.value = normalized;
-    localStorage.setItem(GAN_MAC_KEY, normalized);
-    if (showSuccessLog) log(`GAN MAC 已设置：${normalized}`);
-  } catch (err) {
-    log(`GAN MAC 无效：${formatError(err)}`, "error");
-  }
-}
-
-async function applyMoyuMac(showSuccessLog: boolean): Promise<void> {
-  const mac = els.moyuMacInput.value.trim();
-  if (!mac) {
-    log("请输入魔域 WCU MAC 地址，例如 CF:30:16:01:D1:37", "error");
-    return;
-  }
-  try {
-    await moyuCube.setMacAddress(mac);
-    const normalized = moyuCube.getMacAddress() ?? mac;
-    els.moyuMacInput.value = normalized;
-    localStorage.setItem(MOYU_MAC_KEY, normalized);
-    if (showSuccessLog) log(`魔域 MAC 已保存：${normalized}`);
-  } catch (err) {
-    log(`魔域 MAC 无效：${formatError(err)}`, "error");
-  }
-}
-
-// ====== 公式库 ======
-function openLibraryForBottleneck(bottleneck: string, input: AnalysisInput): void {
-  if (!bottleneck) {
-    log("瓶颈不明确，打开公式库总览", "info");
-    showLibrary("F2L");
-    return;
-  }
-
-  // 根据瓶颈推荐公式
-  const rec = recommendFormulas(bottleneck, getStageDuration(input, bottleneck), input.totalDuration);
-
-  els.libraryTitle.textContent = `${bottleneck} 公式练习推荐`;
-  els.libraryContent.innerHTML = renderRecommendation(rec);
-  bindFormulaActions();
-  els.libraryModal.classList.add("open");
-  log(`📖 打开公式库：${bottleneck}`);
-}
-
-function getStageDuration(input: AnalysisInput, stage: string): number {
+function getStageDurationForLibrary(input: AnalysisInput, stage: string): number {
   if (stage === "Cross") return input.crossDuration;
   if (stage === "F2L") return input.f2lDuration;
   if (stage === "OLL") return input.ollDuration;
@@ -1288,774 +1305,20 @@ function getStageDuration(input: AnalysisInput, stage: string): number {
   return 0;
 }
 
-function renderRecommendation(rec: { reason: string; formulas: Formula[]; practicePlan: string }): string {
-  return `
-    <div class="recommendation">
-      <div class="rec-reason">
-        <strong>推荐理由：</strong>${escapeHtml(rec.reason)}
-      </div>
-      <div class="rec-plan">
-        <strong>📅 练习计划：</strong>${escapeHtml(rec.practicePlan)}
-      </div>
-    </div>
-    <div class="formula-list">
-      ${rec.formulas.map(renderFormulaCard).join("")}
-    </div>
-    ${rec.formulas.length === 0 ? '<p class="placeholder">无对应公式库，参考练习计划</p>' : ''}
-  `;
-}
-
-function showLibrary(category: FormulaCategory): void {
-  libraryState.category = category;
-  void loadSpeedCubeDbVariants();
-  const stats = getLibraryStats();
-  const formulas = getVisibleFormulas(category);
-  const allInCategory = listByCategory(category);
-  const tags = getCategoryTags(category);
-  const masteredInCategory = allInCategory.filter((f) => masteredFormulaIds.has(f.id)).length;
-
-  els.libraryTitle.textContent = `Formula Library (${stats.total})`;
-  els.libraryContent.innerHTML = `
-    ${renderTodayTrainingQueue()}
-    <div class="library-tabs">
-      <button class="tab-btn ${category === "F2L" ? "active" : ""}" data-cat="F2L">F2L (${stats.F2L})</button>
-      <button class="tab-btn ${category === "OLL" ? "active" : ""}" data-cat="OLL">OLL (${stats.OLL})</button>
-      <button class="tab-btn ${category === "PLL" ? "active" : ""}" data-cat="PLL">PLL (${stats.PLL})</button>
-    </div>
-    <div class="library-toolbar">
-      <input id="formula-search" type="search" placeholder="搜索 ID、名称、公式、识别点" value="${escapeHtml(libraryState.search)}">
-      <select id="formula-difficulty">
-        <option value="0" ${libraryState.difficulty === null ? "selected" : ""}>全部星级</option>
-        ${[1, 2, 3, 4, 5].map((level) => `
-          <option value="${level}" ${libraryState.difficulty === level ? "selected" : ""}>${"★".repeat(level)}${"☆".repeat(5 - level)}</option>
-        `).join("")}
-      </select>
-      <select id="formula-tag">
-        <option value="" ${libraryState.tag === "" ? "selected" : ""}>全部标签</option>
-        ${tags.map((tag) => `
-          <option value="${escapeHtml(tag)}" ${libraryState.tag === tag ? "selected" : ""}>${escapeHtml(tag)}</option>
-        `).join("")}
-      </select>
-      <label class="library-toggle">
-        <input id="formula-hide-mastered" type="checkbox" ${libraryState.hideMastered ? "checked" : ""}>
-        隐藏已掌握
-      </label>
-    </div>
-    <div class="library-meta">
-      <span>显示 ${formulas.length} / ${allInCategory.length}</span>
-      <span>已掌握 ${masteredInCategory}</span>
-      <span>当前 ${category}</span>
-    </div>
-    <div class="formula-list">
-      ${formulas.map(renderFormulaCard).join("")}
-    </div>
-    ${formulas.length === 0 ? '<p class="placeholder">没有符合条件的公式，换个筛选条件试试。</p>' : ""}
-  `;
-  els.libraryModal.classList.add("open");
-  bindLibraryControls();
-  bindFormulaActions();
-}
-
-function renderTodayTrainingQueue(): string {
-  const records = getPracticeRecords();
-  const queue = (["F2L", "OLL", "PLL"] as FormulaCategory[]).flatMap((category) => {
-    const candidates = listByCategory(category).filter(isDeviceExecutableFormula);
-    const formula = selectPracticeFormula(candidates, records);
-    return formula ? [formula] : [];
-  });
-  if (queue.length === 0) return "";
-  return `
-    <section class="today-training-queue" aria-label="今日训练队列">
-      <div><span class="eyebrow">Today’s Queue</span><strong class="queue-title"><span>今天练这</span><span class="queue-count">3</span><span>条</span></strong><p>优先安排未练习或成功率较低的公式。</p></div>
-      <div class="queue-items">${queue.map((formula) => `
-        <button class="queue-item" data-practice-formula="${escapeHtml(formula.id)}">
-          <span>${formula.category}</span><strong>${escapeHtml(formula.id)}</strong><em>${escapeHtml(getFormulaDisplayName(formula))}</em>
-        </button>
-      `).join("")}</div>
-    </section>
-  `;
-}
-
-function getVisibleFormulas(category: FormulaCategory): Formula[] {
-  const search = libraryState.search.trim().toLowerCase();
-
-  return listByCategory(category).filter((formula) => {
-    if (libraryState.difficulty !== null && formula.difficulty !== libraryState.difficulty) return false;
-    if (libraryState.tag && !formula.tags.includes(libraryState.tag)) return false;
-    if (libraryState.hideMastered && masteredFormulaIds.has(formula.id)) return false;
-    if (!search) return true;
-
-    const haystack = [
-      formula.id,
-      formula.name,
-      formula.moves.join(" "),
-      formula.tags.join(" "),
-    ].join(" ").toLowerCase();
-    return haystack.includes(search);
-  });
-}
-
-function getCategoryTags(category: FormulaCategory): string[] {
-  return [...new Set(listByCategory(category).flatMap((formula) => formula.tags))].sort();
-}
-
-function bindLibraryControls(): void {
-  els.libraryContent.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const cat = btn.dataset.cat as FormulaCategory | undefined;
-      if (cat) showLibrary(cat);
-    });
-  });
-
-  els.libraryContent.querySelector<HTMLInputElement>("#formula-search")?.addEventListener("input", (event) => {
-    libraryState.search = (event.target as HTMLInputElement).value;
-    showLibrary(libraryState.category);
-  });
-
-  els.libraryContent.querySelector<HTMLSelectElement>("#formula-difficulty")?.addEventListener("change", (event) => {
-    const difficulty = Number((event.target as HTMLSelectElement).value);
-    libraryState.difficulty = difficulty === 0 ? null : difficulty;
-    showLibrary(libraryState.category);
-  });
-
-  els.libraryContent.querySelector<HTMLSelectElement>("#formula-tag")?.addEventListener("change", (event) => {
-    libraryState.tag = (event.target as HTMLSelectElement).value;
-    showLibrary(libraryState.category);
-  });
-
-  els.libraryContent.querySelector<HTMLInputElement>("#formula-hide-mastered")?.addEventListener("change", (event) => {
-    libraryState.hideMastered = (event.target as HTMLInputElement).checked;
-    showLibrary(libraryState.category);
-  });
-}
-
-function renderFormulaCard(f: Formula): string {
-  const mastered = masteredFormulaIds.has(f.id);
-  const mastery = getFormulaMastery(getPracticeRecords(), f.id);
-  const moves = getSelectedFormulaMoves(f);
-  const algorithm = moves.join(" ");
-  const setupMoves = getFormulaSetupMoves({ ...f, moves });
-  const setup = setupMoves.join(" ");
-
-  return `
-    <div class="formula-card ${mastered ? "mastered" : ""}">
-      <div class="formula-header">
-        <span class="formula-id">${escapeHtml(f.id)}</span>
-        <span class="formula-name">${escapeHtml(getFormulaDisplayName(f))}</span>
-        <span class="formula-difficulty">${"★".repeat(f.difficulty)}</span>
-      </div>
-      ${renderFormulaCaseDiagram(f, setupMoves)}
-      <div class="formula-algorithm">
-        <div class="algorithm-label">打乱 / Setup <span>从复原状态执行</span></div>
-        <code class="algorithm-moves">${escapeHtml(setup)}</code>
-      </div>
-      <div class="formula-algorithm primary">
-        <div class="algorithm-label">解法 / Alg <span>${f.moves.length} 步</span></div>
-        <code class="algorithm-moves">${escapeHtml(algorithm)}</code>
-      </div>
-      ${f.source ? `<div class="formula-source">来源：${escapeHtml(f.source)}</div>` : ""}
-      ${renderFormulaVariants(f)}
-      <div class="formula-actions">
-        <button class="ghost" data-copy-setup="${escapeHtml(f.id)}">复制打乱</button>
-        <button class="ghost" data-copy-formula="${escapeHtml(f.id)}">复制公式</button>
-        <button class="practice-btn" data-practice-formula="${escapeHtml(f.id)}">开始练习</button>
-      </div>
-      <div class="formula-mastery">练习 ${mastery.attempts} 次 · 成功率 ${(mastery.successRate * 100).toFixed(0)}% · 平均 ${formatPracticeTime(mastery.averageDuration)}${mastery.averageRecognitionDuration !== null ? ` · 识别 ${formatPracticeTime(mastery.averageRecognitionDuration)} / 执行 ${formatPracticeTime(mastery.averageExecutionDuration)}` : ""}</div>
-    </div>
-  `;
-}
-
-function getFormulaVariants(formula: Formula): FormulaVariant[] {
-  const sourceVariants: FormulaVariant[] = [
-    { name: "主解", moves: formula.moves, note: "默认角度" },
-    ...(formula.variants ?? []),
-    ...(speedCubeDbVariants.get(formula.id) ?? []).map((moves, index) => ({
-      name: `备用解 ${index + 1}`,
-      moves,
-      note: "SpeedCubeDB",
-    })),
-  ];
-  const seen = new Set<string>();
-  const variants: FormulaVariant[] = [];
-  for (const variant of sourceVariants) {
-    const key = variant.moves.join(" ");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    variants.push(variant);
-  }
-  return variants;
-}
-
-interface SpeedCubeDbAlternativesResponse {
-  alternatives: Record<string, string[][]>;
-  source: "SpeedCubeDB";
-}
-
-function isSpeedCubeDbAlternativesResponse(value: unknown): value is SpeedCubeDbAlternativesResponse {
-  if (!value || typeof value !== "object" || !("alternatives" in value)) return false;
-  const alternatives = value.alternatives;
-  return typeof alternatives === "object" && alternatives !== null;
-}
-
-async function loadSpeedCubeDbVariants(): Promise<void> {
-  if (hasLoadedSpeedCubeDbVariants || isLoadingSpeedCubeDbVariants) return;
-  isLoadingSpeedCubeDbVariants = true;
-  try {
-    const response = await fetch("/api/formula-alternatives");
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload: unknown = await response.json();
-    if (!isSpeedCubeDbAlternativesResponse(payload)) throw new Error("响应格式无效");
-    for (const [id, alternatives] of Object.entries(payload.alternatives)) {
-      if (!Array.isArray(alternatives) || !alternatives.every((moves) => Array.isArray(moves) && moves.every((move) => typeof move === "string"))) continue;
-      speedCubeDbVariants.set(id, alternatives);
-    }
-    hasLoadedSpeedCubeDbVariants = true;
-    if (els.libraryModal.classList.contains("open")) showLibrary(libraryState.category);
-  } catch (error) {
-    console.error("[formula-library] SpeedCubeDB 备用解加载失败:", error);
-  } finally {
-    isLoadingSpeedCubeDbVariants = false;
-  }
-}
-
-function getSelectedFormulaVariant(formula: Formula): FormulaVariant {
-  const variants = getFormulaVariants(formula);
-  const index = selectedFormulaVariants.get(formula.id) ?? 0;
-  return variants[index] ?? variants[0];
-}
-
-function getSelectedFormulaMoves(formula: Formula): string[] {
-  return getSelectedFormulaVariant(formula).moves;
-}
-
-function withSelectedFormulaMoves(formula: Formula): Formula {
-  return { ...formula, moves: getSelectedFormulaMoves(formula) };
-}
-
-function renderFormulaVariants(formula: Formula): string {
-  const variants = getFormulaVariants(formula);
-  const selectedIndex = selectedFormulaVariants.get(formula.id) ?? 0;
-  return `
-    <div class="formula-variants" aria-label="${escapeHtml(formula.id)} 可选解法">
-      ${variants.map((variant, index) => `
-        <button
-          class="formula-variant ${index === selectedIndex ? "active" : ""}"
-          data-select-formula-variant="${escapeHtml(formula.id)}"
-          data-variant-index="${index}"
-          type="button"
-        >
-          <span class="variant-name">${escapeHtml(variant.name)}</span>
-          <code>${escapeHtml(variant.moves.join(" "))}</code>
-          <span class="variant-meta">${variant.moves.length} 步${variant.note ? ` · ${escapeHtml(variant.note)}` : ""}</span>
-        </button>
-      `).join("")}
-    </div>
-  `;
-}
-
-function getFormulaDisplayName(formula: Formula): string {
-  if (formula.category !== "F2L") return formula.name;
-  const labels: Record<string, string> = {
-    basic: "基础", paired: "已配对", "split-pair": "分离对", "right-slot": "蓝红槽位",
-    "left-slot": "左侧槽位", "corner-on-top": "顶层角块", "edge-on-top": "顶层棱块",
-    "white-on-top": "顶层白角", "flipped-edge": "翻转棱块", "corner-in-slot": "角块在槽内",
-    "edge-in-slot": "棱块在槽内", "wrong-slot": "错误槽位", extraction: "取出", "back-slot": "后方槽位",
-    "hidden-pair": "隐藏配对", sledgehammer: "Sledge 触发", hedgehammer: "Hedge 触发",
-    setup: "预调整", rotationless: "免旋转", keyhole: "钥匙孔", "twisted-corner": "扭转角块",
-    advanced: "进阶", "slot-preserving": "保槽", "last-pair": "最后一对",
-  };
-  const details = formula.tags.map((tag) => labels[tag]).filter((label): label is string => Boolean(label));
-  const match = /^f2l-(\d+)$/i.exec(formula.id);
-  if (!match) return formula.name;
-  return `F2L 第 ${Number(match[1])} 例 · ${details.slice(0, 3).join(" / ")}`;
-}
-
-function renderFormulaCaseDiagram(formula: Formula, setup: string[]): string {
-  const facelets = createCaseFacelets(setup);
-  if (formula.category !== "F2L") {
-    return `
-      <div class="formula-case-diagram formula-case-diagram-top" aria-label="${escapeHtml(formula.id)} top preview">
-        ${renderFormulaTopView(facelets, formula.category)}
-      </div>
-    `;
-  }
-  const topColor = facelets[4];
-  const hiddenTopCubieFacelets = getCubieFaceletIndexesWithColor(facelets, topColor);
-  const focusCubieFacelets = getUnsolvedCubieFaceletIndexes(facelets);
-  return `
-    <div class="formula-case-diagram formula-case-diagram-f2l" aria-label="${escapeHtml(formula.id)} case preview">
-      <div class="formula-cube-scene">
-        <div class="formula-cube3d">
-          ${renderFormulaCubeFace("u", getFace(facelets, "U"), hiddenTopCubieFacelets, focusCubieFacelets, 0)}
-          ${renderFormulaCubeFace("r", getFace(facelets, "R"), hiddenTopCubieFacelets, focusCubieFacelets, 1)}
-          ${renderFormulaCubeFace("f", getFace(facelets, "F"), hiddenTopCubieFacelets, focusCubieFacelets, 2)}
-          ${renderFormulaCubeFace("d", getFace(facelets, "D"), hiddenTopCubieFacelets, focusCubieFacelets, 3)}
-          ${renderFormulaCubeFace("l", getFace(facelets, "L"), hiddenTopCubieFacelets, focusCubieFacelets, 4)}
-          ${renderFormulaCubeFace("b", getFace(facelets, "B"), hiddenTopCubieFacelets, focusCubieFacelets, 5)}
-        </div>
-      </div>
-      <div class="formula-case-meta">
-        <strong>Case 图</strong>
-        <span>白底 / 红前 / 蓝左；黄色层隐藏，待配对角块与棱块高亮</span>
-      </div>
-    </div>
-  `;
-}
-
-function renderFormulaTopView(facelets: string[], category: "OLL" | "PLL"): string {
-  const state = createFormulaTopViewState(facelets, category);
-  return `
-    <div class="formula-top-view formula-top-view-${category.toLowerCase()}" aria-label="${category} 顶面状态">
-      ${state.map((sticker) => renderFormulaTopSticker(sticker)).join("")}
-    </div>
-  `;
-}
-
-function renderFormulaTopSticker(sticker: string | null): string {
-  if (sticker === null) return '<span class="formula-top-empty" aria-hidden="true"></span>';
-  const color = sticker === "N" ? "#4b5563" : F2L_CASE_COLORS[sticker] ?? "#e5e7eb";
-  return `<span style="background:${color}"></span>`;
-}
-
-function renderFormulaCubeFace(face: string, stickers: string[], hiddenFacelets: Set<number>, focusFacelets: Set<number>, faceIndex: number): string {
-  return `
-    <div class="formula-cube-face formula-cube-face-${face}">
-      ${stickers.map((sticker, index) => {
-        const faceletIndex = faceIndex * 9 + index;
-        const classes = [
-          hiddenFacelets.has(faceletIndex) ? "formula-sticker-hidden" : "",
-          focusFacelets.has(faceletIndex) ? "formula-sticker-focus" : "",
-        ].filter(Boolean).join(" ");
-        return `<span class="${classes}" style="--formula-sticker:${F2L_CASE_COLORS[sticker] ?? "#94a3b8"}"></span>`;
-      }).join("")}
-    </div>
-  `;
-}
-
-
-function bindFormulaActions(): void {
-  bindFormulaCubeControls();
-  els.libraryContent.querySelectorAll<HTMLButtonElement>("[data-select-formula-variant]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.selectFormulaVariant;
-      const variantIndex = Number(btn.dataset.variantIndex ?? "0");
-      if (!id || !Number.isFinite(variantIndex)) return;
-      selectedFormulaVariants.set(id, variantIndex);
-      showLibrary(libraryState.category);
-    });
-  });
-  els.libraryContent.querySelectorAll<HTMLButtonElement>("[data-copy-setup]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const id = btn.dataset.copySetup;
-      const formula = id ? getFormulaById(id) : undefined;
-      if (!formula) return;
-      try {
-        await navigator.clipboard?.writeText(getFormulaSetupMoves(withSelectedFormulaMoves(formula)).join(" "));
-        log(`已复制打乱：${formula.id}`);
-      } catch (err) {
-        console.error(err);
-        log(`复制失败：${formatError(err)}`, "error");
-      }
-    });
-  });
-
-  els.libraryContent.querySelectorAll<HTMLButtonElement>("[data-copy-formula]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const id = btn.dataset.copyFormula;
-      const formula = id ? getFormulaById(id) : undefined;
-      if (!formula) return;
-      try {
-        await navigator.clipboard?.writeText(getSelectedFormulaMoves(formula).join(" "));
-        log(`已复制公式：${formula.id}`);
-      } catch (err) {
-        console.error(err);
-        log(`复制失败：${formatError(err)}`, "error");
-      }
-    });
-  });
-
-  els.libraryContent.querySelectorAll<HTMLButtonElement>("[data-practice-formula]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.practiceFormula;
-      const formula = id ? getFormulaById(id) : undefined;
-      if (!formula) return;
-      const practiceFormula = withSelectedFormulaMoves(formula);
-      if (!isDeviceExecutableFormula(practiceFormula)) {
-        log(`该公式包含 M / 宽转 / 转体，暂不进入智能魔方专项计时：${formula.id}`, "error");
-        return;
-      }
-      pendingPracticeFormula = practiceFormula;
-      pendingPracticeCandidates = [practiceFormula];
-      pendingPracticeOrder = "sequential";
-      els.practiceFormulaName.textContent = `${formula.id} · ${getFormulaDisplayName(formula)}`;
-      els.practiceCount.value = "10";
-      els.practiceModal.classList.add("open");
-    });
-  });
-}
-
-function bindFormulaCubeControls(): void {
-  els.libraryContent.querySelectorAll<HTMLElement>(".formula-cube-scene").forEach((scene) => {
-    const cube = scene.querySelector<HTMLElement>(".formula-cube3d");
-    if (!cube) return;
-    let rotationX = -28;
-    let rotationY = -38;
-    let startX = 0;
-    let startY = 0;
-    let initialX = 0;
-    let initialY = 0;
-    let dragging = false;
-    const render = (): void => {
-      cube.style.transform = `rotateX(${rotationX}deg) rotateY(${rotationY}deg)`;
-    };
-    render();
-
-    scene.addEventListener("pointerdown", (event) => {
-      dragging = true;
-      startX = event.clientX;
-      startY = event.clientY;
-      initialX = rotationX;
-      initialY = rotationY;
-      scene.setPointerCapture(event.pointerId);
-      scene.classList.add("is-dragging");
-    });
-    scene.addEventListener("pointermove", (event) => {
-      if (!dragging) return;
-      rotationY = initialY + (event.clientX - startX) * 0.7;
-      rotationX = Math.max(-82, Math.min(82, initialX - (event.clientY - startY) * 0.7));
-      render();
-    });
-    const stop = (event: PointerEvent): void => {
-      if (!dragging) return;
-      dragging = false;
-      scene.classList.remove("is-dragging");
-      if (scene.hasPointerCapture(event.pointerId)) scene.releasePointerCapture(event.pointerId);
-    };
-    scene.addEventListener("pointerup", stop);
-    scene.addEventListener("pointercancel", stop);
-  });
-}
-
-function toggleFormulaMastered(id: string): void {
-  if (masteredFormulaIds.has(id)) {
-    masteredFormulaIds.delete(id);
-  } else {
-    masteredFormulaIds.add(id);
-  }
-  saveMasteredFormulas();
-  updateQuickStats();
-}
-
-function saveMasteredFormulas(): void {
-  localStorage.setItem(FORMULA_MASTERED_KEY, JSON.stringify([...masteredFormulaIds]));
-}
-
-function loadMasteredFormulas(): void {
-  const saved = localStorage.getItem(FORMULA_MASTERED_KEY);
-  if (!saved) return;
-
-  try {
-    const ids = JSON.parse(saved);
-    if (Array.isArray(ids)) {
-      masteredFormulaIds = new Set(ids.filter((id): id is string => typeof id === "string"));
-    }
-  } catch (err) {
-    console.error(err);
-    localStorage.removeItem(FORMULA_MASTERED_KEY);
-  }
-}
-
-function updateQuickStats(): void {
-  renderHistory();
-}
-
 function recordSolve(input: AnalysisInput): void {
   historyStore.add(input);
   recentSolves = historyStore.all;
-  renderHistory();
-  if (isSolveEligible(input.qualityStatus)) animateHistoryRefresh();
+  historyController.render();
+  if (isScoreEligible(input)) historyController.animateRefresh();
 }
 
-function animateHistoryRefresh(): void {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const metrics = [els.historyToday, els.historyAo5, els.historyAo12, els.historyAo25, els.historyAo50, els.historyAo100];
-  for (const metric of metrics) {
-    metric.classList.remove("score-updated");
-    void metric.offsetWidth;
-    metric.classList.add("score-updated");
-  }
-}
-
-function isDetailedScoreMode(): boolean {
-  return els.scoreDisplayMode.value === "detailed";
-}
-
-function getReviewInsight(solve: AnalysisInput): { bottleneck: string; reason: string; advice: string } {
-  const stages: Array<[string, number]> = [
-    ["Cross", solve.crossDuration], ["F2L", solve.f2lDuration],
-    ["OLL", solve.ollDuration], ["PLL", solve.pllDuration],
-  ];
-  const [bottleneck, duration] = stages.reduce((slowest, current) => current[1] > slowest[1] ? current : slowest);
-  const longestPause = solve.stepReview?.pauses.reduce(
-    (longest, pause) => pause.gap > longest.gap ? pause : longest,
-    { gap: 0, move: "", stage: "" },
-  );
-  const slotInsight = getF2lSlotInsight(solve);
-  if (slotInsight) return slotInsight;
-  if (longestPause && longestPause.gap >= 1000) {
-    return {
-      bottleneck,
-      reason: `${longestPause.stage || bottleneck} 在 ${longestPause.move || "动作间"} 停顿 ${(longestPause.gap / 1000).toFixed(2)}s`,
-      advice: `先练习 ${longestPause.stage || bottleneck} 的连续识别，目标是把停顿压到 1 秒以内。`,
-    };
-  }
-  return {
-    bottleneck,
-    reason: `${bottleneck} 用时 ${(duration / 1000).toFixed(2)}s，占本次成绩主要比例`,
-    advice: `建立 ${bottleneck} 专项训练，优先减少观察和启动前停顿。`,
-  };
-}
-
-function getF2lSlotInsight(solve: AnalysisInput): { bottleneck: string; reason: string; advice: string } | null {
-  const completedSlots = (solve.f2lSlots ?? []).filter((slot) => !slot.completedWithCross && slot.duration !== undefined);
-  if (completedSlots.length === 0) return null;
-  const target = completedSlots.reduce((worst, slot) => {
-    const worstScore = (worst.duration ?? 0) + worst.maxGap * 1.5 + worst.repairCount * 1000 + worst.breakCount * 1000;
-    const score = (slot.duration ?? 0) + slot.maxGap * 1.5 + slot.repairCount * 1000 + slot.breakCount * 1000;
-    return score > worstScore ? slot : worst;
-  });
-  const duration = ((target.duration ?? 0) / 1000).toFixed(2);
-  const pauseText = target.maxGap >= 800 ? `，最长停顿 ${(target.maxGap / 1000).toFixed(2)}s` : "";
-  const recoveryText = target.repairCount > 0 || target.breakCount > 0
-    ? `，修复 ${target.repairCount} 次、回退 ${target.breakCount} 次`
-    : "";
-  return {
-    bottleneck: `F2L · ${target.slot}`,
-    reason: `第 ${target.completionOrder ?? "—"} 对 ${target.slot} 用时 ${duration}s、${target.moves ?? 0} 步${pauseText}${recoveryText}`,
-    advice: target.maxGap >= 800
-      ? `专项练 ${target.slot} 槽位的连续观察：本对插入前先锁定下一对，优先把这次 ${(target.maxGap / 1000).toFixed(2)}s 停顿压低。`
-      : `专项练 ${target.slot} 槽位：保持本对 ${target.moves ?? 0} 步的执行节奏，减少重做和回退。`,
-  };
-}
-
-function renderDeviceHistory(solves: AnalysisInput[] = recentSolves): void {
-  const groups = new Map<string, AnalysisInput[]>();
-  for (const solve of solves) {
-    if (!isSolveEligible(solve.qualityStatus)) continue;
-    const key = solve.deviceId?.trim() || solve.deviceName?.trim() || "未标识魔方";
-    const records = groups.get(key) ?? [];
-    records.push(solve);
-    groups.set(key, records);
-  }
-  const stats = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
-  els.deviceHistory.innerHTML = stats.length === 0
-    ? "暂无设备成绩"
-    : stats.map(([, records]) => {
-      const name = records[0].deviceName?.trim() || "未标识魔方";
-      const scores = records.map(getSolveScore).filter(Number.isFinite);
-      const average = scores.reduce((sum, value) => sum + value, 0) / scores.length;
-      const best = Math.min(...scores);
-      const latest = Math.max(...records.map((record) => record.completedAt ?? 0));
-      const latestLabel = latest > 0 ? new Date(latest).toLocaleDateString() : "—";
-      return `<div class="device-history-entry">
-        <strong>${escapeHtml(name)}</strong>
-        <span>${records.length} 把</span>
-        <span>平均 ${scores.length ? `${(average / 1000).toFixed(2)}s` : "DNF"}</span>
-        <span>最佳 ${scores.length ? `${(best / 1000).toFixed(2)}s` : "DNF"}</span>
-        <em>最近 ${latestLabel}</em>
-      </div>`;
-    }).join("");
-}
-
-function loadHistoryGroups(): void {
-  const saved = localStorage.getItem(HISTORY_GROUPS_KEY);
-  if (!saved) return;
-  try {
-    const parsed: unknown = JSON.parse(saved);
-    if (!Array.isArray(parsed)) return;
-    historyGroups = parsed.filter((item): item is HistoryGroup => {
-      if (typeof item !== "object" || item === null) return false;
-      const group = item as Partial<HistoryGroup>;
-      return typeof group.id === "string" && typeof group.name === "string" && typeof group.createdAt === "number";
-    });
-  } catch (error) {
-    console.error("[history-groups] 无法加载分组:", error);
-    localStorage.removeItem(HISTORY_GROUPS_KEY);
-  }
-}
-
-function saveHistoryGroups(): void {
-  localStorage.setItem(HISTORY_GROUPS_KEY, JSON.stringify(historyGroups));
-}
-
-function renderHistoryGroupOptions(): void {
-  const systemOptions = SYSTEM_HISTORY_GROUPS
-    .map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.name)}</option>`)
-    .join("");
-  const customOptions = historyGroups
-    .map((group) => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.name)}</option>`)
-    .join("");
-  els.historyGroup.innerHTML = `${systemOptions}${customOptions ? `<option disabled>────────</option>${customOptions}` : ""}`;
-  if (!SYSTEM_HISTORY_GROUP_IDS.has(selectedHistoryGroup) && !historyGroups.some((group) => group.id === selectedHistoryGroup)) {
-    selectedHistoryGroup = "normal";
-  }
-  els.historyGroup.value = selectedHistoryGroup;
-}
-
-function getVisibleHistory(): Array<{ solve: AnalysisInput; index: number }> {
-  return recentSolves
-    .map((solve, index) => ({ solve, index }))
-    .filter(({ solve }) => isSolveInSelectedHistoryGroup(solve));
-}
-
-function isSolveInSelectedHistoryGroup(solve: AnalysisInput): boolean {
-  if (selectedHistoryGroup === "all") return true;
-  if (selectedHistoryGroup === "normal") return !isPracticeSolve(solve);
-  if (selectedHistoryGroup === "practice") return isPracticeSolve(solve);
-  if (selectedHistoryGroup === "practice-formula") return solve.practiceKind === "formula";
-  if (selectedHistoryGroup === "practice-cross") return solve.practiceKind === "cross";
-  if (selectedHistoryGroup === "practice-f2l") return solve.practiceKind === "f2l";
-  if (selectedHistoryGroup === "practice-cross-f2l") return solve.practiceKind === "cross-f2l";
-  return solve.groupId === selectedHistoryGroup;
+/** 成绩以实体状态优先；CFOP 与 Agent 则必须使用完整且可回放的动作流。 */
+function isScoreEligible(solve: AnalysisInput): boolean {
+  return isScoreEligibleByState(solve.physicalState, solve.qualityStatus);
 }
 
 function isPracticeSolve(solve: AnalysisInput): boolean {
   return Boolean(solve.practiceKind || solve.practiceMode || solve.practiceFormulaId);
-}
-
-function getHistoryPracticeLabel(solve: AnalysisInput): string {
-  if (solve.practiceKind === "formula") return solve.practiceFormulaId ? `公式 ${solve.practiceFormulaId}` : "公式练习";
-  if (solve.practiceKind === "cross") return "Cross 练习";
-  if (solve.practiceKind === "f2l") return "F2L 练习";
-  if (solve.practiceKind === "cross-f2l") return "Cross+F2L";
-  return "";
-}
-
-function renderReviewCandidates(): void {
-  const eligible = recentSolves
-    .map((solve, index) => ({ solve, index }))
-    .filter(({ solve }) => isSolveEligible(solve.qualityStatus) && !isPracticeSolve(solve));
-  const recent = eligible.slice(-100);
-  const slowest = [...recent].sort((a, b) => getSolveScore(b.solve) - getSolveScore(a.solve)).slice(0, 10);
-  const thresholdSeconds = Math.max(0, Number(els.reviewThreshold.value) || 0);
-  const selected = new Map<number, { solve: AnalysisInput; index: number }>();
-  for (const item of slowest) selected.set(item.index, item);
-  for (const item of recent) {
-    if (getSolveScore(item.solve) / 1000 >= thresholdSeconds) selected.set(item.index, item);
-  }
-
-  const candidates = [...selected.values()].sort((a, b) => getSolveScore(b.solve) - getSolveScore(a.solve));
-  els.reviewList.innerHTML = candidates.length === 0
-    ? "当前没有符合条件的成绩。"
-    : candidates.map(({ solve, index }) => {
-      const insight = getReviewInsight(solve);
-      return `
-      <button class="review-entry" data-review-index="${index}">
-        <span>#${index + 1}</span>
-        <strong>${formatSolveTime(solve)}${solve.penalty === "dnf" ? "" : "s"}</strong>
-        <em>${(solve.tps ?? 0).toFixed(2)} TPS</em>
-        <small><b>${insight.bottleneck}</b>：${insight.reason}<br>${insight.advice}</small>
-      </button>
-    `;
-    }).join("");
-  els.reviewList.querySelectorAll<HTMLButtonElement>("[data-review-index]").forEach((entry) => {
-    entry.addEventListener("click", () => {
-      const index = Number(entry.dataset.reviewIndex);
-      if (!Number.isInteger(index) || !recentSolves[index]) return;
-      selectedHistoryIndex = index;
-      renderHistoryDetail(recentSolves[index], false);
-      els.historyModal.classList.add("open");
-    });
-  });
-}
-
-function renderHistory(): void {
-  renderHistoryGroupOptions();
-  const visibleHistory = getVisibleHistory();
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayCount = visibleHistory.filter(({ solve }) => (solve.completedAt ?? 0) >= todayStart.getTime()).length;
-  els.historyToday.textContent = `${todayCount} 次`;
-  const scoredSolves = visibleHistory
-    .map(({ solve }) => solve)
-    .filter((solve) => isSolveEligible(solve.qualityStatus));
-  const averages: Array<[HTMLElement, number]> = [
-    [els.historyAo5, 5], [els.historyAo12, 12], [els.historyAo25, 25],
-    [els.historyAo50, 50], [els.historyAo100, 100],
-  ];
-  for (const [element, size] of averages) element.textContent = formatAverage(scoredSolves, size);
-
-  const latest = visibleHistory
-    .slice(-10)
-    .map((entry, visibleIndex) => ({ ...entry, visibleIndex: Math.max(0, visibleHistory.length - 10) + visibleIndex }))
-    .reverse();
-  els.historyLastFive.innerHTML = latest.length === 0
-    ? "暂无完成记录"
-    : latest.map(({ solve, index: historyIndex, visibleIndex }) => {
-      const practiceLabel = getHistoryPracticeLabel(solve);
-      const detail = isDetailedScoreMode()
-        ? `TPS ${(solve.tps ?? 0).toFixed(2)} · Cross ${(solve.crossDuration / 1000).toFixed(2)}s · F2L ${(solve.f2lDuration / 1000).toFixed(2)}s · OLL ${(solve.ollDuration / 1000).toFixed(2)}s · PLL ${(solve.pllDuration / 1000).toFixed(2)}s`
-        : `${(solve.tps ?? 0).toFixed(2)} TPS`;
-      return `<button class="history-entry" data-history-index="${historyIndex}"><span>#${visibleIndex + 1}${practiceLabel ? ` · ${escapeHtml(practiceLabel)}` : ""}</span><strong>${formatSolveTime(solve)}${solve.penalty === "dnf" ? "" : "s"}</strong><em>${detail}</em></button>`;
-    }).join("");
-  els.historyLastFive.querySelectorAll<HTMLButtonElement>("[data-history-index]").forEach((entry) => {
-    entry.addEventListener("click", () => {
-      const index = Number(entry.dataset.historyIndex);
-      if (!Number.isInteger(index) || !recentSolves[index]) return;
-      selectedHistoryIndex = index;
-      renderHistoryDetail(recentSolves[index], false);
-      els.historyModal.classList.add("open");
-    });
-  });
-  renderDeviceHistory(visibleHistory.map(({ solve }) => solve));
-  renderBlockPracticeStats();
-  renderReviewCandidates();
-  renderPerformanceChart(scoredSolves.map(getSolveScore).filter(Number.isFinite));
-}
-
-function renderHistoryDetail(solve: AnalysisInput, showSolution: boolean): void {
-  historyDetailController.render(solve, showSolution);
-}
-
-function formatAverage(solves: AnalysisInput[], size: number): string {
-  if (solves.length < size) return "—";
-  return formatWcaAverage(solves.slice(-size).map((solve) => ({ duration: solve.totalDuration, penalty: solve.penalty })));
-}
-
-function renderPerformanceChart(durations: number[]): void {
-  if (durations.length === 0) {
-    els.performanceMean.textContent = "—";
-    els.performanceStd.textContent = "—";
-    els.performanceChart.innerHTML = '<text x="300" y="92" text-anchor="middle" fill="var(--warm-gray)" font-size="14">完成一把后显示成绩趋势</text>';
-    return;
-  }
-
-  const values = durations.slice(-30).map((duration) => duration / 1000);
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
-  els.performanceMean.textContent = `${mean.toFixed(2)}s`;
-  els.performanceStd.textContent = `${Math.sqrt(variance).toFixed(2)}s`;
-
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = Math.max(0.5, max - min);
-  const points = values.map((value, index) => {
-    const x = values.length === 1 ? 300 : 36 + (index * 528) / (values.length - 1);
-    const y = 150 - ((value - min) / range) * 112;
-    return { x, y, value };
-  });
-  const line = points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
-  const dots = points.map((point) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" fill="var(--gold)"><title>${point.value.toFixed(2)}s</title></circle>`).join("");
-  const meanY = 150 - ((mean - min) / range) * 112;
-  els.performanceChart.innerHTML = `
-    <line x1="36" y1="150" x2="564" y2="150" stroke="var(--rule)" />
-    <line x1="36" y1="38" x2="36" y2="150" stroke="var(--rule)" />
-    <line x1="36" y1="${meanY.toFixed(1)}" x2="564" y2="${meanY.toFixed(1)}" stroke="var(--gold-light)" stroke-dasharray="5 5" />
-    <polyline points="${line}" fill="none" stroke="var(--gold)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-    ${dots}
-    <text x="8" y="42" fill="var(--warm-gray)" font-size="11">${max.toFixed(2)}s</text>
-    <text x="8" y="152" fill="var(--warm-gray)" font-size="11">${min.toFixed(2)}s</text>
-  `;
 }
 
 interface SolveResultFeedback {
@@ -2075,14 +1338,17 @@ function formatSolveTime(solve: AnalysisInput): string {
 function getComparableSolveHistory(current: AnalysisInput): AnalysisInput[] {
   const isPractice = isPracticeSolve(current);
   return recentSolves.filter((solve) => {
-    if (!isSolveEligible(solve.qualityStatus) || isPracticeSolve(solve) !== isPractice) return false;
+    if (!isScoreEligible(solve) || isPracticeSolve(solve) !== isPractice) return false;
     return !isPractice || solve.practiceKind === current.practiceKind;
   });
 }
 
 function getSolveResultFeedback(current: AnalysisInput): SolveResultFeedback {
-  if (!isSolveEligible(current.qualityStatus)) {
+  if (!isScoreEligible(current)) {
     return { label: "本把不计入成绩", detail: "设备数据未通过校验，不参与 PB 和 AO 统计。", isPersonalBest: false };
+  }
+  if (current.physicalState === "confirmed-solved" && !current.analysisEligible) {
+    return { label: "实体复原已确认", detail: "本把已计入 PB 和 AO；动作流不完整，已跳过 CFOP 与 AI 分析。", isPersonalBest: false };
   }
   if (current.penalty === "dnf") {
     return { label: "DNF", detail: "观察超过 DNF 时限；本把保留在历史中，并按 WCA 规则参与 AO。", isPersonalBest: false };
@@ -2113,7 +1379,7 @@ function getPracticeResultAction(current: AnalysisInput): string {
   const timing = current.practiceKind === "formula"
     ? `识别 ${formatPracticeTime(current.recognitionDuration ?? null)} · 执行 ${formatPracticeTime(current.executionDuration ?? null)}`
     : `本次用时 ${(current.totalDuration / 1000).toFixed(2)}s`;
-  const hint = isSuccess ? "下一题已准备好，完成打乱后转动第一步开始。" : "使用“重新开始本次”保持同一 case，先确认识别再执行。";
+  const hint = isSuccess ? "下一题已准备好，完成打乱后转动第一步开始。" : "使用「重新开始本次」保持同一 case，先确认识别再执行。";
   return `
     <div class="result-action-card">
       <span>专项练习${formula}</span>
@@ -2125,12 +1391,17 @@ function getPracticeResultAction(current: AnalysisInput): string {
 
 function renderSolveSummary(current: AnalysisInput, previous?: AnalysisInput): void {
   const feedback = getSolveResultFeedback(current);
+  const inspectionValue = current.inspectionDuration ? `${(current.inspectionDuration / 1000).toFixed(2)}s` : "—";
+  const analysisAvailable = isAnalysisEligible(current.analysisEligible, current.qualityStatus);
   const metrics: { label: string; value: string; current: number; previous?: number; unit: string }[] = [
+    { label: "观察", value: inspectionValue, current: current.inspectionDuration ?? 0, previous: previous?.inspectionDuration, unit: "s" },
     { label: "TPS", value: (current.tps ?? 0).toFixed(2), current: current.tps ?? 0, previous: previous?.tps, unit: "" },
-    { label: "Cross", value: `${(current.crossDuration / 1000).toFixed(2)}s`, current: current.crossDuration, previous: previous?.crossDuration, unit: "s" },
-    { label: "F2L", value: `${(current.f2lDuration / 1000).toFixed(2)}s`, current: current.f2lDuration, previous: previous?.f2lDuration, unit: "s" },
-    { label: "OLL", value: `${(current.ollDuration / 1000).toFixed(2)}s`, current: current.ollDuration, previous: previous?.ollDuration, unit: "s" },
-    { label: "PLL", value: `${(current.pllDuration / 1000).toFixed(2)}s`, current: current.pllDuration, previous: previous?.pllDuration, unit: "s" },
+    ...(analysisAvailable ? [
+      { label: "Cross", value: `${(current.crossDuration / 1000).toFixed(2)}s`, current: current.crossDuration, previous: previous?.crossDuration, unit: "s" },
+      { label: "F2L", value: `${(current.f2lDuration / 1000).toFixed(2)}s`, current: current.f2lDuration, previous: previous?.f2lDuration, unit: "s" },
+      { label: "OLL", value: `${(current.ollDuration / 1000).toFixed(2)}s`, current: current.ollDuration, previous: previous?.ollDuration, unit: "s" },
+      { label: "PLL", value: `${(current.pllDuration / 1000).toFixed(2)}s`, current: current.pllDuration, previous: previous?.pllDuration, unit: "s" },
+    ] : []),
   ];
   const metricMarkup = metrics.map((metric) => {
     const delta = metric.previous === undefined ? "" : formatDelta(metric.current, metric.previous, metric.unit);
@@ -2144,20 +1415,26 @@ function renderSolveSummary(current: AnalysisInput, previous?: AnalysisInput): v
     </section>
     <div class="solve-stage-metrics">${metricMarkup}</div>
   `;
-  const stages = [
+  const stages = analysisAvailable ? [
     { name: "Cross", duration: current.crossDuration },
     { name: "F2L", duration: current.f2lDuration },
     { name: "OLL", duration: current.ollDuration },
     { name: "PLL", duration: current.pllDuration },
-  ].filter((stage) => stage.duration > 0);
+  ].filter((stage) => stage.duration > 0) : [];
   const bottleneck = stages.reduce((slowest, stage) => stage.duration > slowest.duration ? stage : slowest, stages[0]);
   const quality = presentSolveQuality(current.qualityStatus, current.qualityAnomalies);
   const practiceAction = getPracticeResultAction(current);
-  const defaultAction = !isSolveEligible(current.qualityStatus) ? `
+  const defaultAction = !isScoreEligible(current) ? `
     <div class="result-action-card">
       <span>本把不计入成绩</span>
       <strong>${escapeHtml(quality.label)}</strong>
       <p>${escapeHtml(quality.description)} 请重新生成打乱并从提示的第一步开始执行。</p>
+    </div>
+  ` : !analysisAvailable ? `
+    <div class="result-action-card">
+      <span>本把已计分</span>
+      <strong>等待 BLE 动作流诊断</strong>
+      <p>实体复原已确认；为避免错误建议，本把不拆分 CFOP，也不会进入 AI 训练样本。</p>
     </div>
   ` : bottleneck ? `
     <div class="result-action-card">
@@ -2170,7 +1447,7 @@ function renderSolveSummary(current: AnalysisInput, previous?: AnalysisInput): v
   els.resultNextAction.innerHTML = practiceAction || defaultAction;
   els.resultNextAction.querySelector<HTMLButtonElement>("#btn-result-practice")?.addEventListener("click", () => {
     els.cfopModal.classList.remove("open");
-    openLibraryForBottleneck(bottleneck.name, current);
+    formulaLibrary.openForBottleneck(bottleneck.name, bottleneck.duration, current.totalDuration);
   });
 }
 
@@ -2181,10 +1458,6 @@ function formatDelta(current: number, previous: number, unit: string): string {
   return `(${sign}${delta.toFixed(2)}${unit})`;
 }
 
-els.btnCloseLibrary.onclick = () => {
-  els.libraryModal.classList.remove("open");
-};
-
 function closeResultModals(): void {
   els.cfopModal.classList.remove("open");
   els.agentModal.classList.remove("open");
@@ -2192,36 +1465,60 @@ function closeResultModals(): void {
 
 els.btnCloseCfop.onclick = closeResultModals;
 els.btnCloseAgent.onclick = closeResultModals;
-els.btnOpenAgent.onclick = () => {
-  const validCount = recentSolves.filter((solve) => isSolveEligible(solve.qualityStatus)).length;
-  els.analysisCount.max = String(Math.max(1, validCount));
-  els.analysisCount.value = String(Math.min(12, validCount || 1));
-  els.agentModal.classList.add("open");
-};
-els.btnRunAnalysis.onclick = async () => {
-  const validCount = recentSolves.filter((solve) => isSolveEligible(solve.qualityStatus)).length;
-  const scope = Math.min(validCount, Math.max(1, Math.floor(Number(els.analysisCount.value)) || 1));
-  const input = createHistoryAnalysisInput(recentSolves, scope);
-  if (!input) {
-    els.agentOutput.innerHTML = '<p class="placeholder">请先完成至少一把，才可以分析历史数据。</p>';
+
+/** 渲染训练计划卡片到 #training-plan-container */
+function renderTrainingPlan(): void {
+  const plan = loadPlan();
+  if (!plan) {
+    els.trainingPlanContainer.innerHTML = "";
     return;
   }
-  els.analysisCount.value = String(scope);
-  els.btnRunAnalysis.disabled = true;
-  els.btnRunAnalysis.textContent = "分析中…";
-  els.agentOutput.innerHTML = `<p class="placeholder">正在分析最近 ${scope} 把成绩…</p>`;
-  log(`调用 DeepSeek：分析最近 ${scope} 把`);
-  try {
-    renderAgentResult(await analyzeWithDeepSeek(input), input);
-  } finally {
-    els.btnRunAnalysis.disabled = false;
-    els.btnRunAnalysis.textContent = "开始分析";
+  const totalDays = plan.days.length;
+  const progress = plan.status === "graduated" ? 100 : Math.round((plan.completedDays / totalDays) * 100);
+  const today = getTodayTask(plan);
+  const statusText = plan.status === "graduated" ? "已完成" : `第 ${plan.completedDays + 1}/${totalDays} 天`;
+
+  const drillsHtml = today
+    ? `<ul class="plan-drills">${today.drills.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ul>`
+    : "";
+  const targetHtml = today ? `<div class="plan-target">目标：${escapeHtml(today.targetMetric)}</div>` : "";
+  const todayLabel = plan.status === "graduated" ? "计划已完成，瓶颈已改善" : "今日训练";
+
+  els.trainingPlanContainer.innerHTML = `
+    <div class="plan-card ${plan.status === "graduated" ? "graduated" : ""}">
+      <div class="plan-header">
+        <span class="plan-title">${plan.status === "graduated" ? "训练计划（已毕业）" : "训练计划"}</span>
+        <span class="plan-stage-tag">${escapeHtml(plan.targetStage)} · ${statusText}</span>
+      </div>
+      <div class="plan-progress-bar"><div class="plan-progress-fill" style="width:${progress}%"></div></div>
+      <div class="plan-today">
+        <div class="plan-today-label">${todayLabel}</div>
+        ${drillsHtml}
+        ${targetHtml}
+      </div>
+    </div>`;
+}
+
+/** 分析完成后更新训练计划（追加快照 → 更新/生成计划 → 保存 → 重渲染） */
+function handlePlanAfterAnalysis(result: AnalysisResult): void {
+  appendAnalysisSnapshot(result);
+  let plan = loadPlan();
+  if (plan && plan.status === "active") {
+    plan = updatePlanProgress(plan, result);
+    savePlan(plan);
+  } else if (!plan) {
+    // 没有活跃计划时，积累足够样本后自动生成
+    const history = loadAnalysisHistory();
+    if (history.length >= 3) {
+      const agg = aggregateIssues(snapshotsToResults(history));
+      const latestDrills = result.drills;
+      plan = generatePlan(agg, latestDrills);
+      savePlan(plan);
+    }
   }
-};
-els.btnCloseHistory.onclick = () => {
-  historyDetailController.close();
-  els.historyModal.classList.remove("open");
-};
+  renderTrainingPlan();
+}
+
 bindAnalysisController({
   elements: {
     btnOpenAgent: els.btnOpenAgent,
@@ -2234,50 +1531,61 @@ bindAnalysisController({
   getRecords: () => recentSolves,
   renderResult: renderAgentResult,
   log: (message) => log(message),
+  onBeforeAnalyze: (input) => {
+    input.sessionContext = loadSessionContext().entries;
+  },
+  onAfterAnalyze: (result, input) => {
+    appendSessionEntry({
+      completedAt: Date.now(),
+      totalDuration: input.totalDuration,
+      bottleneckStage: result.bottleneckStage ?? "",
+      topIssue: result.issues?.[0]?.description ?? result.bottleneck,
+    });
+    handlePlanAfterAnalysis(result);
+  },
+  onModalOpen: renderTrainingPlan,
 });
-els.btnViewHistorySolution.onclick = () => {
-  const solve = selectedHistoryIndex === null ? undefined : recentSolves[selectedHistoryIndex];
-  if (solve) renderHistoryDetail(solve, true);
-};
-els.btnRetryHistory.onclick = () => {
-  const historyIndex = selectedHistoryIndex;
-  const solve = historyIndex === null ? undefined : recentSolves[historyIndex];
-  if (historyIndex === null || !solve?.scramble) return;
-  currentScramble = solve.scramble;
-  scrambleProgress = createScrambleProgress(currentScramble);
-  performedScrambleMoves = [];
-  scrambleStateVerified = false;
-  awaitingNextScramble = false;
-  postSolveMove = null;
-  timer.reset();
-  stopTimerDisplay();
-  updateTimerDisplay();
-  els.btnStart.disabled = false;
-  els.btnStop.disabled = true;
-  cubeVisualizer.reset();
-  showScrambleStage();
-  renderScrambleProgress();
-  els.historyModal.classList.remove("open");
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  log(`重试历史打乱 #${historyIndex + 1}`);
-};
-els.btnDeleteHistory.onclick = () => {
-  if (selectedHistoryIndex === null) return;
-  historyStore.remove(selectedHistoryIndex);
-  // remove() 会以新数组提交记录，页面引用也必须同步到该快照。
-  recentSolves = historyStore.all;
-  selectedHistoryIndex = null;
-  renderHistory();
-  els.historyModal.classList.remove("open");
-  log("已删除历史记录");
-};
+const cubeEditor = new CubeEditorController({
+  elements: {
+    cubeEditorPreview: els.cubeEditorPreview,
+    cubeEditorPalette: els.cubeEditorPalette,
+    cubeEditorStatus: els.cubeEditorStatus,
+    cubeAgentPrompt: els.cubeAgentPrompt,
+    btnCubeEditorReset: els.btnCubeEditorReset,
+    btnCubeEditorSolved: els.btnCubeEditorSolved,
+    btnAskCubeAgent: els.btnAskCubeAgent,
+  },
+  onAsk: (message, facelets, complete) => {
+    if (!complete) {
+      els.agentOutput.innerHTML = `<p class="placeholder">局面尚未完整。请继续涂完 54 格，再让 Agent 校验和求解。</p>`;
+      return;
+    }
+    const validation = validateCubeEditorFacelets(facelets);
+    if (!validation.valid || !validation.normalizedFacelets) {
+      els.agentOutput.innerHTML = `<div class="agent-chat-message pending"><strong>CubeMind Agent</strong><p>局面未通过确定性校验：${escapeHtml(validation.issues.join(" "))}</p><p>请修正后再请求解法，避免 AI 对不可达局面编造公式。</p></div>`;
+      return;
+    }
+    const question = message || "请分析这个局面，并给出适合我的 CFOP 解法。";
+    els.agentOutput.innerHTML = `<div class="agent-chat-message"><strong>你</strong><p>${escapeHtml(question)}</p><code>${validation.normalizedFacelets}</code></div><div class="agent-chat-message pending"><strong>CubeMind Agent</strong><p>局面颜色和中心朝向已通过校验。下一步将接入 two-phase 求解工具验证可达性，并把可验证解法交给 Agent 解释。</p></div>`;
+    log("已将黑色魔方编辑器中的局面发送到 AI 入口");
+  },
+});
+cubeEditor.init();
 els.btnCancelPractice.onclick = () => {
+  if (formulaLibrary.hasPendingPractice()) {
+    formulaLibrary.cancelPractice();
+    return;
+  }
   pendingPracticeFormula = null;
   pendingPracticeCandidates = [];
   els.practiceModal.classList.remove("open");
 };
 els.btnClosePractice.onclick = els.btnCancelPractice.onclick;
 els.btnStartPractice.onclick = () => {
+  if (formulaLibrary.hasPendingPractice()) {
+    formulaLibrary.confirmPractice();
+    return;
+  }
   if (!pendingPracticeFormula) return;
   const target = Math.max(1, Math.min(100, Math.floor(Number(els.practiceCount.value) || 1)));
   startPractice(pendingPracticeFormula, target, pendingPracticeCandidates.length > 0 ? pendingPracticeCandidates : [pendingPracticeFormula], pendingPracticeOrder);
@@ -2293,110 +1601,82 @@ els.btnRetryPractice.onclick = () => {
   log(`重新开始专项练习：${practiceSession.formula.id}`);
 };
 
-// ====== BLE 连接 ======
-function setBleStatus(state: "disconnected" | "connecting" | "connected", name = ""): void {
-  els.statusBadge.className = `status ${state}`;
-  els.statusBadge.textContent =
-    state === "connected" ? "已连接" :
-    state === "connecting" ? "连接中..." : "未连接";
-  els.deviceName.textContent = name;
-  els.btnDisconnect.disabled = state !== "connected";
-  if (state === "connected") {
-    els.connectionMenu.open = false;
+// ====== BLE 连接（控制器） ======
+const bleController = new BleConnectionController(
+  {
+    connectionPanel: els.connectionPanel,
+    connectionMenu: els.connectionMenu,
+    statusBadge: els.statusBadge,
+    deviceName: els.deviceName,
+    btnDisconnect: els.btnDisconnect,
+    capsuleDot: document.getElementById("capsule-dot") ?? undefined,
+    capsuleLabel: document.getElementById("capsule-label") ?? undefined,
+    driverSlots: new Map([
+      ["GAN", { btnConnect: els.btnConnectGan, macInput: els.ganMacInput, btnSetMac: els.btnSetGanMac }],
+      ["魔域", { btnConnect: els.btnConnectMoyu, macInput: els.moyuMacInput, btnSetMac: els.btnSetMoyuMac }],
+    ]),
+  },
+  {
+    onMove: onCubeMove,
+    onDisconnect: (brand) => handleBleDisconnectMidSolve(brand),
+    onConnected: (brand) => confirmCubeResetAfterConnect(brand),
+    onGyroOrientation: (q) => cubeVisualizer.setDeviceOrientation(q),
+    onResetOrientation: () => cubeVisualizer.resetDeviceOrientation(),
+    log: (msg, level) => log(msg, level),
+  },
+  [ganCube, moyuCube],
+);
+bleController.init();
+
+let isBleDiagnosticRecording = false;
+els.btnToggleBleDiagnostics.addEventListener("click", () => {
+  if (isBleDiagnosticRecording) {
+    if (!bleController.stopPacketRecording()) {
+      els.bleDiagnosticsStatus.textContent = "当前连接设备不支持 BLE 原始包录制。";
+      return;
+    }
+    isBleDiagnosticRecording = false;
+    els.btnToggleBleDiagnostics.textContent = "开始诊断录制";
+    els.bleDiagnosticsStatus.textContent = "录制已停止，可导出 JSON 并反馈给开发者。";
+    return;
   }
-}
-
-function setConnectionMacMode(brand: "gan" | "moyu"): void {
-  els.connectionPanel.dataset.activeBrand = brand;
-}
-
-els.btnConnectGan.onclick = async () => {
-  setConnectionMacMode("gan");
-  setBleStatus("connecting");
-  try {
-    let hasReceivedGanGyro = false;
-    ganCube.onMove(onCubeMove);
-    ganCube.onGyro((event) => {
-      cubeVisualizer.setDeviceOrientation(event.quaternion);
-      if (!hasReceivedGanGyro) {
-        hasReceivedGanGyro = true;
-        log("GAN 姿态跟随已启用");
-      }
-    });
-    ganCube.onConnect(() => {
-      setBleStatus("connected", ganCube.getName() || "GAN");
-      cubeVisualizer.resetDeviceOrientation();
-      log(`GAN 已连接: ${ganCube.getName()}`);
-      const normalizedMac = ganCube.getMacAddress();
-      if (normalizedMac) {
-        els.ganMacInput.value = normalizedMac;
-        localStorage.setItem(GAN_MAC_KEY, normalizedMac);
-      }
-      window.setTimeout(() => confirmCubeResetAfterConnect("GAN"), 0);
-    });
-    ganCube.onDisconnect(() => {
-      cubeVisualizer.resetDeviceOrientation();
-      setBleStatus("disconnected");
-      log("GAN 已断开", "error");
-    });
-    ganCube.onBattery((level) => {
-      if (Number.isFinite(level)) {
-        log(`🔋 GAN 电量: ${level}%`);
-      } else {
-      log("GAN 电量解析失败，请检查 MAC 地址是否正确", "error");
-      }
-    });
-    await ganCube.connect(els.ganMacInput.value.trim() || undefined);
-  } catch (err: unknown) {
-    setBleStatus("disconnected");
-    log(`GAN 连接失败: ${formatError(err)}`, "error");
+  if (!bleController.startPacketRecording()) {
+    els.bleDiagnosticsStatus.textContent = "当前连接设备不支持 BLE 原始包录制。";
+    return;
   }
-};
+  isBleDiagnosticRecording = true;
+  els.btnToggleBleDiagnostics.textContent = "停止诊断录制";
+  els.bleDiagnosticsStatus.textContent = "正在录制 BLE 原始包；请复现一次缺步后停止并导出。";
+});
 
-els.btnSetGanMac.onclick = () => {
-  setConnectionMacMode("gan");
-  void applyGanMac(true);
-};
-els.btnSetMoyuMac.onclick = () => {
-  setConnectionMacMode("moyu");
-  void applyMoyuMac(true);
-};
-
-els.btnConnectMoyu.onclick = async () => {
-  setConnectionMacMode("moyu");
-  setBleStatus("connecting");
-  try {
-    let hasReceivedMoyuGyro = false;
-    moyuCube.onMove(onCubeMove);
-    moyuCube.onGyroRaw(() => {
-      if (hasReceivedMoyuGyro) return;
-      hasReceivedMoyuGyro = true;
-      log("魔域陀螺仪通知已接收，已纳入协议诊断");
-    });
-    moyuCube.onConnect(() => {
-      setBleStatus("connected", moyuCube.getName() || "魔域");
-      log(`魔域已连接: ${moyuCube.getName()}`);
-      const normalizedMac = moyuCube.getMacAddress();
-      if (normalizedMac) {
-        els.moyuMacInput.value = normalizedMac;
-        localStorage.setItem(MOYU_MAC_KEY, normalizedMac);
-      }
-      window.setTimeout(() => confirmCubeResetAfterConnect("魔域"), 0);
-    });
-    moyuCube.onDisconnect(() => {
-      setBleStatus("disconnected");
-      log("魔域已断开", "error");
-    });
-    await moyuCube.connect(els.moyuMacInput.value.trim() || undefined);
-  } catch (err: unknown) {
-    setBleStatus("disconnected");
-    log(`魔域连接失败: ${formatError(err)}`, "error");
+els.btnExportBleDiagnostics.addEventListener("click", () => {
+  const recording = bleController.exportPacketRecording();
+  if (!recording) {
+    els.bleDiagnosticsStatus.textContent = "暂无可导出的诊断包，请先连接 GAN 并开始录制。";
+    return;
   }
-};
+  const blob = new Blob([recording], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cubemind-ble-diagnostic-${Date.now()}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  els.bleDiagnosticsStatus.textContent = "诊断 JSON 已导出；可附在缺步反馈中。";
+});
 
-els.btnDisconnect.onclick = async () => {
-  await ganCube.disconnect();
-  await moyuCube.disconnect();
+// 本地真机采样入口：不写入 localStorage，只把当前内存中的 BLE 通知导出为 JSON。
+const debugGlobal = globalThis as typeof globalThis & {
+  __cubemindGanDiagnostics?: {
+    start: () => void;
+    stop: () => void;
+    export: () => string;
+  };
+};
+debugGlobal.__cubemindGanDiagnostics = {
+  start: () => ganCube.startPacketRecording(),
+  stop: () => ganCube.stopPacketRecording(),
+  export: () => ganCube.exportPacketRecording(),
 };
 
 // ====== 键盘快捷键 ======
@@ -2405,32 +1685,27 @@ document.addEventListener("keydown", (e) => {
     // 带修饰键的组合键不应触发计时器快捷操作，Alt+A 等组合键交由浏览器或系统处理。
     return;
   }
-  if (e.code === "Space" && !els.btnStart.disabled && !els.btnStop.disabled) {
+  if (e.code === "Space" && (!els.btnStart.disabled || !els.btnStop.disabled)) {
     e.preventDefault();
     if (timer.getState().isRunning) els.btnStop.click();
-    else els.btnStart.click();
+    else if (!els.btnStart.disabled) els.btnStart.click();
   }
   if (e.code === "Escape") {
     els.libraryModal.classList.remove("open");
     closeResultModals();
     els.practiceModeModal.classList.remove("open");
     els.practiceModal.classList.remove("open");
-    historyDetailController.close();
-    els.historyModal.classList.remove("open");
+    historyController.closeModal();
   }
 });
 
 // ====== 启动 ======
-applyAppSettings(appSettings);
+settingsController.init();
+formulaLibrary.init();
+historyController.init();
 newScramble();
-loadMasteredFormulas();
-els.ganMacInput.value = localStorage.getItem(GAN_MAC_KEY) ?? "";
-els.moyuMacInput.value = localStorage.getItem(MOYU_MAC_KEY) ?? "";
-setConnectionMacMode("gan");
-if (recentSolves.length > 0) log(`📂 已加载 ${recentSolves.length} 把历史`);
-loadHistoryGroups();
-updateQuickStats();
+if (recentSolves.length > 0) log(` 已加载 ${recentSolves.length} 把历史`);
 log("CubeMind 已启动");
 log(`当前时间: ${new Date().toLocaleString()}`);
 const stats = getLibraryStats();
-log(`📚 公式库：F2L ${stats.F2L} + OLL ${stats.OLL} + PLL ${stats.PLL} = ${stats.total} 个公式`);
+log(` 公式库：F2L ${stats.F2L} + OLL ${stats.OLL} + PLL ${stats.PLL} = ${stats.total} 个公式`);

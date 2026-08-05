@@ -13,6 +13,8 @@ export interface StageSegment {
   endIdx: number;
   duration: number;
   timestamps: number[];
+  /** 该阶段被跳过（如 OLL skip），无实际 move */
+  skipped?: boolean;
 }
 
 export interface CfopResult {
@@ -70,7 +72,14 @@ export function parseCfop(
   const segments: StageSegment[] = [];
   let startIdx = 0;
   const buildSegment = (stage: Stage, endIdx: number): void => {
-    if (endIdx <= startIdx) return;
+    // 阶段被跳过（如 OLL skip）：生成零长度标记 segment
+    if (endIdx <= startIdx) {
+      segments.push({
+        stage, moves: [], moveIndices: [], startIdx, endIdx: startIdx,
+        duration: 0, timestamps: [], skipped: true,
+      });
+      return;
+    }
     const timestamps = moveTimes?.slice(startIdx, endIdx) ?? [];
     segments.push({
       stage,

@@ -3,6 +3,10 @@ import type { AnalysisInput } from "../src-shared/analysis-types.ts";
 const MAX_RECENT_STEP_REVIEWS = 12;
 const MAX_PAUSES_PER_REVIEW = 5;
 const MAX_TOTAL_RECENT_PAUSES = 40;
+const MAX_SCRAMBLE_LENGTH = 500;
+const MAX_MOVES_LENGTH = 200;
+const MAX_MOVE_TOKEN_LENGTH = 5;
+const MAX_F2L_SLOTS = 4;
 
 export interface SolveInput {
   totalDuration: number;
@@ -63,6 +67,51 @@ function parseRecentStepReviews(value: unknown): AnalysisInput["recentStepReview
   return reviews.some((review) => review === null) ? undefined : reviews as NonNullable<AnalysisInput["recentStepReviews"]>;
 }
 
+function parseMoves(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.length > MAX_MOVES_LENGTH) return undefined;
+  const moves = value.filter(
+    (token): token is string => typeof token === "string" && token.length <= MAX_MOVE_TOKEN_LENGTH,
+  );
+  return moves.length === value.length ? moves : undefined;
+}
+
+const VALID_SLOTS = new Set(["FR", "FL", "BL", "BR"]);
+
+function parseF2lSlots(value: unknown): AnalysisInput["f2lSlots"] | undefined {
+  if (!Array.isArray(value) || value.length > MAX_F2L_SLOTS) return undefined;
+  const slots = value.map((item) => {
+    if (!isRecord(item)) return null;
+    if (typeof item.slot !== "string" || !VALID_SLOTS.has(item.slot)) return null;
+    return {
+      slot: item.slot as "FR" | "FL" | "BL" | "BR",
+      completionOrder: isMoveCount(item.completionOrder) ? item.completionOrder : undefined,
+      duration: isNonNegativeNumber(item.duration) ? item.duration : undefined,
+      moves: isMoveCount(item.moves) ? item.moves : undefined,
+      pauseCount: isMoveCount(item.pauseCount) ? item.pauseCount : 0,
+      maxGap: isNonNegativeNumber(item.maxGap) ? item.maxGap : 0,
+      breakCount: isMoveCount(item.breakCount) ? item.breakCount : 0,
+      repairCount: isMoveCount(item.repairCount) ? item.repairCount : 0,
+      completedWithCross: item.completedWithCross === true,
+    };
+  });
+  return slots.some((slot) => slot === null) ? undefined : slots as NonNullable<AnalysisInput["f2lSlots"]>;
+}
+
+const MAX_SESSION_ENTRIES = 5;
+
+function parseSessionContext(value: unknown): AnalysisInput["sessionContext"] {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  const entries = value.slice(0, MAX_SESSION_ENTRIES).map((item): AnalysisInput["sessionContext"] extends (infer T)[] | undefined ? T | null : never => {
+    if (!isRecord(item)) return null;
+    if (!isNonNegativeNumber(item.completedAt) || !isNonNegativeNumber(item.totalDuration)) return null;
+    const bottleneckStage = typeof item.bottleneckStage === "string" ? item.bottleneckStage.slice(0, 20) : "";
+    const topIssue = typeof item.topIssue === "string" ? item.topIssue.slice(0, 200) : "";
+    return { completedAt: item.completedAt, totalDuration: item.totalDuration, bottleneckStage, topIssue };
+  });
+  return entries.some((e) => e === null) ? undefined : entries as NonNullable<AnalysisInput["sessionContext"]>;
+}
+
 /** 将不可信请求体收窄为分析服务所需的安全输入。 */
 export function parseAnalysisInput(value: unknown): AnalysisInput | null {
   if (!isRecord(value)) return null;
@@ -75,6 +124,14 @@ export function parseAnalysisInput(value: unknown): AnalysisInput | null {
   const recentStepReviews = parseRecentStepReviews(value.recentStepReviews);
   if (value.recentSolves !== undefined && !recentSolves) return null;
   if (value.recentStepReviews !== undefined && !recentStepReviews) return null;
+
+  const scramble = optionalString(value.scramble, MAX_SCRAMBLE_LENGTH);
+  const moves = parseMoves(value.moves);
+  const f2lSlots = parseF2lSlots(value.f2lSlots);
+  const sessionContext = parseSessionContext(value.sessionContext);
+  if (value.moves !== undefined && !moves) return null;
+  if (value.f2lSlots !== undefined && !f2lSlots) return null;
+
   return {
     totalDuration: value.totalDuration as number,
     crossDuration: value.crossDuration as number,
@@ -86,8 +143,12 @@ export function parseAnalysisInput(value: unknown): AnalysisInput | null {
     ollMoves: value.ollMoves as number,
     pllMoves: value.pllMoves as number,
     analysisScope: isMoveCount(value.analysisScope) ? value.analysisScope : undefined,
+    scramble,
+    moves,
+    f2lSlots,
     recentSolves,
     recentStepReviews,
+    sessionContext,
   };
 }
 

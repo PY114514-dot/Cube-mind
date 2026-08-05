@@ -40,8 +40,16 @@ export function createApp(): express.Express {
   });
 
   if (existsSync(FRONTEND_DIST)) {
-    app.use(express.static(FRONTEND_DIST));
-    app.get("*", (_req: Request, res: Response) => res.sendFile(join(FRONTEND_DIST, "index.html")));
+    app.use(express.static(FRONTEND_DIST, {
+      // Demo 每次构建都可能替换同名 bundle；禁止浏览器继续使用旧脚本。
+      setHeaders: (res, path) => {
+        if (path.endsWith(".html") || path.endsWith("bundle.js")) res.setHeader("Cache-Control", "no-store");
+      },
+    }));
+    app.get("*", (_req: Request, res: Response) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.sendFile(join(FRONTEND_DIST, "index.html"));
+    });
   }
 
   app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {

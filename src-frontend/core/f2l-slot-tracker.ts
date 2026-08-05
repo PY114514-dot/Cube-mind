@@ -62,12 +62,18 @@ export function analyzeF2lSlots(
   let definitions = targetFace === "U" ? U_SLOT_DEFINITIONS : D_SLOT_DEFINITIONS;
   let crossDuration = 0;
   const slots = D_SLOT_DEFINITIONS.map(createSlotReview);
+  const slotSolvedState: Record<F2lSlotReview["slot"], boolean> = {
+    FR: false,
+    FL: false,
+    BL: false,
+    BR: false,
+  };
   let lastCompletionMove = 0;
   let lastCompletionTime = solveStartTime;
   let completionOrder = 0;
 
   if (crossCompletedAtMove !== undefined) {
-    markSlotsSolvedWithCross(cube, slots, definitions);
+    markSlotsSolvedWithCross(cube, slots, definitions, slotSolvedState);
     completionOrder = slots.filter((slot) => slot.completedWithCross).length;
     if (areAllSlotsCompleted(slots) && targetFace) {
       return { targetFace, crossCompletedAtMove, crossDuration, slots };
@@ -86,18 +92,18 @@ export function analyzeF2lSlots(
       crossDuration = Math.max(0, timestamp - solveStartTime);
       lastCompletionMove = completedMoves;
       lastCompletionTime = timestamp;
-      markSlotsSolvedWithCross(cube, slots, definitions);
+      markSlotsSolvedWithCross(cube, slots, definitions, slotSolvedState);
       completionOrder = slots.filter((slot) => slot.completedWithCross).length;
       continue;
     }
-    updateSlots(cube, slots, definitions, completedMoves, timestamp, moveGaps, pauseThreshold, {
+    updateSlots(cube, slots, definitions, completedMoves, timestamp, moveGaps, pauseThreshold, slotSolvedState, {
       order: completionOrder,
       lastMove: lastCompletionMove,
       lastTime: lastCompletionTime,
     });
-    const latest = slots.find((slot) => slot.completedAtMove === completedMoves);
-    if (latest) {
-      completionOrder = latest.completionOrder ?? completionOrder;
+    const latestOrder = Math.max(...slots.map((slot) => slot.completionOrder ?? 0), completionOrder);
+    if (latestOrder > completionOrder) {
+      completionOrder = latestOrder;
       lastCompletionMove = completedMoves;
       lastCompletionTime = timestamp;
     }
@@ -123,7 +129,12 @@ function isSlotSolved(cube: CubieCube, definitions: SlotDefinition[], slot: F2lS
   return cube.ca[definition.corner] === definition.corner && cube.ea[definition.edge] === definition.edge * 2;
 }
 
-function markSlotsSolvedWithCross(cube: CubieCube, slots: F2lSlotReview[], definitions: SlotDefinition[]): void {
+function markSlotsSolvedWithCross(
+  cube: CubieCube,
+  slots: F2lSlotReview[],
+  definitions: SlotDefinition[],
+  slotSolvedState: Record<F2lSlotReview["slot"], boolean>,
+): void {
   for (const slot of slots) {
     if (!isSlotSolved(cube, definitions, slot.slot)) continue;
     slot.completedWithCross = true;
@@ -131,6 +142,7 @@ function markSlotsSolvedWithCross(cube: CubieCube, slots: F2lSlotReview[], defin
     slot.completedAtMove = 0;
     slot.duration = 0;
     slot.moves = 0;
+    slotSolvedState[slot.slot] = true;
   }
 }
 
@@ -142,20 +154,36 @@ function updateSlots(
   timestamp: number,
   moveGaps: number[],
   pauseThreshold: number,
+  slotSolvedState: Record<F2lSlotReview["slot"], boolean>,
   previous: { order: number; lastMove: number; lastTime: number },
 ): void {
+  let nextOrder = previous.order;
   for (const slot of slots) {
     const solved = isSlotSolved(cube, definitions, slot.slot);
-    if (!solved || slot.completedAtMove !== undefined) continue;
+    if (slot.completedAtMove !== undefined) {
+      // Cross 时已经归位的槽位不算 F2L 复盘对象；后续 OLL/PLL 也不应把它标成回退。
+      if (slot.completedWithCross) continue;
+      if (slotSolvedState[slot.slot] && !solved) {
+        slot.breakCount++;
+        slotSolvedState[slot.slot] = false;
+      } else if (!slotSolvedState[slot.slot] && solved) {
+        slot.repairCount++;
+        slotSolvedState[slot.slot] = true;
+      }
+      continue;
+    }
+    if (!solved) continue;
     const gapStart = Math.min(Math.max(0, previous.lastMove), moveGaps.length);
     const gapEnd = Math.min(Math.max(gapStart, completedMoves), moveGaps.length);
     const gaps = moveGaps.slice(gapStart, gapEnd);
-    slot.completionOrder = previous.order + 1;
+    nextOrder++;
+    slot.completionOrder = nextOrder;
     slot.completedAtMove = completedMoves;
     slot.duration = Math.max(0, timestamp - previous.lastTime);
     slot.moves = Math.max(0, completedMoves - previous.lastMove);
     slot.pauseCount = gaps.filter((gap) => gap >= pauseThreshold).length;
     slot.maxGap = gaps.length === 0 ? 0 : Math.max(...gaps);
+    slotSolvedState[slot.slot] = true;
   }
 }
 

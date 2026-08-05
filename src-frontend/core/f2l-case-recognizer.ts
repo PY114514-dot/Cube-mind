@@ -12,6 +12,8 @@ export interface F2lCaseMatch {
   confidence: "exact";
 }
 
+export type FormulaCaseMatch = F2lCaseMatch;
+
 const F2L_CASE_TEMPLATES = createF2lCaseTemplates();
 
 /**
@@ -27,6 +29,15 @@ export function recognizeF2lCase(facelets: string): F2lCaseMatch | null {
 /** 识别当前专项练习所使用的 setup，支持 UI 生成的同一 case 变体公式。 */
 export function recognizeF2lPracticeCase(facelets: string, formula: Formula): F2lCaseMatch | null {
   if (formula.category !== "F2L") return null;
+  return recognizeFormulaPracticeCase(facelets, formula);
+}
+
+/**
+ * 校验 OLL / PLL（以及 F2L）专项的起始 case。
+ * 公式库和练习入口使用同一套 setup，因此这里可以做精确匹配，避免把
+ * “打乱做错但最后恰好还原”的尝试计为正确样本。
+ */
+export function recognizeFormulaPracticeCase(facelets: string, formula: Formula): FormulaCaseMatch | null {
   const expectedFacelets = createCaseFacelets(getFormulaSetupMoves(formula)).join("");
   return facelets === expectedFacelets ? toCaseMatch(formula) : null;
 }

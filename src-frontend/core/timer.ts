@@ -28,11 +28,12 @@ export class Timer {
   };
   private onFinishCb: TimerCallback | null = null;
 
-  /** 开始计时 */
-  start(): void {
+  /** 开始计时（重复调用时忽略，防止双触发清空已有 move） */
+  start(startTime = Date.now()): void {
+    if (this.state.isRunning) return;
     this.state = {
       isRunning: true,
-      startTime: Date.now(),
+      startTime,
       endTime: 0,
       moves: [],
     };
@@ -42,9 +43,10 @@ export class Timer {
   addMove(moveStr: string): void {
     if (!this.state.isRunning) return;
     const now = Date.now();
+    // 首步的 gap 从计时起点算，否则首步前的停顿对分析不可见
     const gap = this.state.moves.length > 0
       ? now - this.state.moves[this.state.moves.length - 1].timestamp
-      : 0;
+      : now - this.state.startTime;
     this.state.moves.push({ move: moveStr, timestamp: now, gapFromPrev: gap });
   }
 

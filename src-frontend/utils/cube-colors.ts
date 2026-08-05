@@ -31,6 +31,9 @@ export const F2L_CASE_COLORS: Record<string, string> = {
   B: CUBE_COLORS.orange,
 };
 
+/** 公式库中无关贴纸的实体中性灰，OLL/PLL 与 F2L 共用。 */
+export const FORMULA_NEUTRAL_COLOR = "#4b5563";
+
 /** SpeedCubeDB 与公式库使用的单字符颜色标记。 */
 export const STICKER_COLORS: Record<string, string> = {
   ...FACE_COLORS,

@@ -14,8 +14,12 @@
 
 import { createDecoder, decodeGanValue, encodeGanValue, normalizeMac, type GanDecoder } from "./gan-crypto.ts";
 import { BlePacketProtocol, BlePacketRecorder } from "./ble-packet-harness.ts";
+import { CubieCube } from "../utils/mathlib.ts";
 
 // ============== UUID 定义（与 cstimer 一致） ==============
+import type { CubeDriver, CubeGyroCallback, CubePacketCallback, CubeMove, CubeMoveCallback, CubeBatteryCallback, CubeConnectCallback, CubeDisconnectCallback } from "./cube-driver.ts";
+export type { CubeMove, CubeMoveCallback as CubeCallback, CubeBatteryCallback as BatteryCallback, CubeConnectCallback as ConnectCallback, CubeDisconnectCallback as DisconnectCallback } from "./cube-driver.ts";
+
 const UUID_SUFFIX = "-0000-1000-8000-00805f9b34fb";
 
 const SERVICE_UUID_META = `0000180a${UUID_SUFFIX}`;
@@ -62,18 +66,6 @@ function findGanManufacturerData(data: Map<number, DataView>): DataView | null {
 
 // ============== 类型定义 ==============
 
-/** 单个 move 事件 */
-export interface CubeMove {
-  /** move 字符串，如 "R", "U'", "F2" */
-  move: string;
-  /** 设备本地时间戳（毫秒） */
-  timestamp: number;
-  /** 浏览器接收时间（毫秒，Date.now()） */
-  locTime: number;
-  /** move 序号（0-255 循环） */
-  moveCnt: number;
-}
-
 /** 解法记录（一次完整还原） */
 export interface SolveRecord {
   /** 打乱序列 */
@@ -89,10 +81,10 @@ export interface SolveRecord {
 }
 
 /** 回调函数签名 */
-export type CubeCallback = (move: CubeMove) => void;
-export type BatteryCallback = (level: number) => void;
-export type ConnectCallback = () => void;
-export type DisconnectCallback = () => void;
+type CubeCallback = CubeMoveCallback;
+type BatteryCallback = CubeBatteryCallback;
+type ConnectCallback = CubeConnectCallback;
+type DisconnectCallback = CubeDisconnectCallback;
 
 export interface CubeQuaternion {
   x: number;
@@ -114,6 +106,11 @@ export interface GanV2MovePacket {
   moves: { move: string; timestamp: number; moveCnt: number }[];
 }
 
+export interface GanV2CubeStatePacket {
+  moveCnt: number;
+  facelets: string;
+}
+
 export interface GanHistoryMove {
   move: string;
   moveCnt: number;
@@ -123,6 +120,22 @@ export interface GanV4MoveHistoryPacket {
   startMoveCnt: number;
   moves: GanHistoryMove[];
 }
+
+/** GAN v4 0xEC 姿态包；四元数布局与 DCTimer-BLE 的公开实现一致。 */
+export interface GanV4GyroPacket {
+  mode: 0xec;
+  declaredLength: number;
+  bytes: number[];
+  payload: number[];
+  quaternion: CubeQuaternion;
+}
+
+export interface GanV4GyroPacketEvent extends GanV4GyroPacket {
+  rawBytes: number[];
+  locTime: number;
+}
+
+export type GanV4GyroPacketCallback = (event: GanV4GyroPacketEvent) => void;
 
 interface BufferedMove {
   moveCnt: number;
@@ -157,10 +170,49 @@ export function parseGanV2MovePacket(bytes: number[], prevMoveCnt: number): GanV
   return { moveCnt, moves };
 }
 
+/** 解析 GAN v2 mode 4 局面包；其 moveCnt 是后续动作流的正确基线。 */
+export function parseGanV2CubeStatePacket(bytes: number[]): GanV2CubeStatePacket | null {
+  const binaryStr = bytes.map((byte) => byte.toString(2).padStart(8, "0")).join("");
+  if (binaryStr.length < 102 || parseInt(binaryStr.slice(0, 4), 2) !== 4) return null;
+  const cube = new CubieCube();
+  let cornerCheck = 0xf00;
+  let edgeCheck = 0;
+  for (let index = 0; index < 7; index++) {
+    const permutation = parseInt(binaryStr.slice(12 + index * 3, 15 + index * 3), 2);
+    const orientation = parseInt(binaryStr.slice(33 + index * 2, 35 + index * 2), 2);
+    cornerCheck -= orientation << 3;
+    cornerCheck ^= permutation;
+    cube.ca[index] = (orientation << 3) | permutation;
+  }
+  cube.ca[7] = ((cornerCheck & 0xff8) % 24) | (cornerCheck & 0x7);
+  for (let index = 0; index < 11; index++) {
+    const permutation = parseInt(binaryStr.slice(47 + index * 4, 51 + index * 4), 2);
+    const orientation = parseInt(binaryStr.slice(91 + index, 92 + index), 2);
+    edgeCheck ^= (permutation << 1) | orientation;
+    cube.ea[index] = (permutation << 1) | orientation;
+  }
+  cube.ea[11] = edgeCheck;
+  if (cube.verify() !== 0) return null;
+  return { moveCnt: parseInt(binaryStr.slice(4, 12), 2), facelets: cube.toFaceCube() };
+}
+
 function decodeSignedMagnitude(value: number, magnitudeBits: number): number {
   const sign = value >> magnitudeBits;
   const magnitude = value & ((1 << magnitudeBits) - 1);
   return sign === 0 ? magnitude : -magnitude;
+}
+
+function normalizeGanGyroQuaternion(w: number, x: number, y: number, z: number): CubeQuaternion | null {
+  const length = Math.hypot(w, x, y, z);
+  if (!Number.isFinite(length) || length < 0.000001) return null;
+  // GAN 传感器轴映射到页面坐标系；与 DCTimer-BLE 的 v2/v4 实现保持一致。
+  const normalizeZero = (value: number): number => value === 0 ? 0 : value;
+  return {
+    x: normalizeZero(x / length),
+    y: normalizeZero(z / length),
+    z: normalizeZero(-y / length),
+    w: normalizeZero(w / length),
+  };
 }
 
 /** 解析 GAN v2 的姿态四元数与三轴角速度（协议 mode=1）。 */
@@ -168,12 +220,13 @@ export function parseGanV2GyroPacket(bytes: number[]): Omit<GanGyroEvent, "locTi
   const bits = bytes.map((byte) => byte.toString(2).padStart(8, "0")).join("");
   if (bits.length < 80 || parseInt(bits.slice(0, 4), 2) !== 1) return null;
   const read = (start: number, length: number): number => parseInt(bits.slice(start, start + length), 2);
-  const quaternion = {
-    w: decodeSignedMagnitude(read(4, 16), 15) / 0x7fff,
-    x: decodeSignedMagnitude(read(20, 16), 15) / 0x7fff,
-    y: decodeSignedMagnitude(read(36, 16), 15) / 0x7fff,
-    z: decodeSignedMagnitude(read(52, 16), 15) / 0x7fff,
-  };
+  const quaternion = normalizeGanGyroQuaternion(
+    decodeSignedMagnitude(read(4, 16), 15) / 0x7fff,
+    decodeSignedMagnitude(read(20, 16), 15) / 0x7fff,
+    decodeSignedMagnitude(read(36, 16), 15) / 0x7fff,
+    decodeSignedMagnitude(read(52, 16), 15) / 0x7fff,
+  );
+  if (!quaternion) return null;
   return {
     quaternion,
     velocity: {
@@ -204,6 +257,31 @@ export function parseGanV4MoveHistoryPacket(bytes: number[]): GanV4MoveHistoryPa
   return { startMoveCnt, moves };
 }
 
+/**
+ * GAN v4 0xEC 包的四元数从第 16 bit 开始，每个分量为 16 位符号-幅值数。
+ * 第二字节按协议原样保留，供诊断导出和后续校验。
+ */
+export function parseGanV4GyroPacket(bytes: readonly number[]): GanV4GyroPacket | null {
+  if (bytes.length < 10 || bytes[0] !== 0xec) return null;
+  const bits = bytes.map((byte) => byte.toString(2).padStart(8, "0")).join("");
+  const read = (start: number): number => parseInt(bits.slice(start, start + 16), 2);
+  const quaternion = normalizeGanGyroQuaternion(
+    decodeSignedMagnitude(read(16), 15) / 0x7fff,
+    decodeSignedMagnitude(read(32), 15) / 0x7fff,
+    decodeSignedMagnitude(read(48), 15) / 0x7fff,
+    decodeSignedMagnitude(read(64), 15) / 0x7fff,
+  );
+  if (!quaternion) return null;
+  const declaredLength = bytes[1];
+  return {
+    mode: 0xec,
+    declaredLength,
+    bytes: [...bytes],
+    payload: Array.from(bytes.slice(2)),
+    quaternion,
+  };
+}
+
 function isMoveNumberInRange(start: number, end: number, moveCnt: number, closedStart = false, closedEnd = false): boolean {
   return ((end - start) & 0xff) >= ((moveCnt - start) & 0xff)
     && (closedStart || ((start - moveCnt) & 0xff) > 0)
@@ -212,7 +290,12 @@ function isMoveNumberInRange(start: number, end: number, moveCnt: number, closed
 
 // ============== GAN Cube 类 ==============
 
-export class GanCube {
+export class GanCube implements CubeDriver {
+  readonly brand = "GAN";
+  readonly needsMac = true;
+  readonly supportsGyro = true;
+  readonly macStorageKey = "cubemind:gan-mac";
+
   private device: BluetoothDevice | null = null;
   private server: BluetoothRemoteGATTServer | null = null;
   private v2ReadChar: BluetoothRemoteGATTCharacteristic | null = null;
@@ -227,13 +310,25 @@ export class GanCube {
   private macAddress: string | null = null;
   private notificationQueue: Promise<void> = Promise.resolve();
   private readonly packetRecorder = new BlePacketRecorder();
+  private decryptFailures = 0;
+  private latestFacelets: string | null = null;
+  private pendingFaceletRequest: ((facelets: string | null) => void) | null = null;
+  private static readonly MAX_DECRYPT_FAILURES = 5;
+
+  // 命名事件处理器引用（disconnect 时需 removeEventListener 防止泄漏）
+  private boundOnGattDisconnect: (() => void) | null = null;
+  private boundOnV2ValueChanged: ((e: Event) => void) | null = null;
+  private boundOnV4ValueChanged: ((e: Event) => void) | null = null;
 
   // 回调
   private onMoveCb: CubeCallback | null = null;
   private onBatteryCb: BatteryCallback | null = null;
   private onConnectCb: ConnectCallback | null = null;
   private onDisconnectCb: DisconnectCallback | null = null;
-  private onGyroCb: GyroCallback | null = null;
+  private onGyroCb: CubeGyroCallback | null = null;
+  private onPacketCb: CubePacketCallback | null = null;
+  private onV4GyroPacketCb: GanV4GyroPacketCallback | null = null;
+  private onDecryptErrorCb: ((message: string) => void) | null = null;
 
   /** 开始仅存于内存的原始通知包录制，供真机问题排查。 */
   startPacketRecording(): void {
@@ -246,6 +341,29 @@ export class GanCube {
 
   exportPacketRecording(): string {
     return this.packetRecorder.exportFixture();
+  }
+
+  /** 读取 GAN v2 当前局面；用于结束时以实体状态校验本地动作流。 */
+  async requestFacelets(): Promise<string | null> {
+    if (!this.v2WriteChar) return null;
+    return new Promise<string | null>((resolve) => {
+      const timer = window.setTimeout(() => {
+        if (this.pendingFaceletRequest !== settle) return;
+        this.pendingFaceletRequest = null;
+        resolve(null);
+      }, 900);
+      const settle = (facelets: string | null): void => {
+        window.clearTimeout(timer);
+        if (this.pendingFaceletRequest === settle) this.pendingFaceletRequest = null;
+        resolve(facelets);
+      };
+      this.pendingFaceletRequest?.(null);
+      this.pendingFaceletRequest = settle;
+      void this.sendV2Request(4).catch((error: unknown) => {
+        console.error("[gan-cube] 无法请求 v2 局面:", error);
+        settle(null);
+      });
+    });
   }
 
   /**
@@ -361,7 +479,8 @@ export class GanCube {
     this.deviceName = device.name || "Unknown GAN Cube";
     console.log(`[gan-cube] 选中设备: ${this.deviceName}`);
 
-    device.addEventListener("gattserverdisconnected", () => this.handleDisconnect());
+    this.boundOnGattDisconnect = () => this.handleDisconnect();
+    device.addEventListener("gattserverdisconnected", this.boundOnGattDisconnect);
 
     // 自动提取 MAC 地址（从 advertisement 的 manufacturerData）。GAN v2/v3/v4 加密都依赖它。
     if (preferredMac?.trim()) {
@@ -429,14 +548,15 @@ export class GanCube {
 
     // 启动通知监听
     await this.v2ReadChar.startNotifications();
-    this.v2ReadChar.addEventListener("characteristicvaluechanged", (e) => {
+    this.boundOnV2ValueChanged = (e: Event) => {
       const value = (e.target as BluetoothRemoteGATTCharacteristic).value;
       if (!value) return;
       const bytes = new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
       this.notificationQueue = this.notificationQueue
         .then(() => this.handleV2Event(new DataView(bytes.buffer)))
         .catch((err: unknown) => console.error("[gan-cube] v2 通知处理异常:", err));
-    });
+    };
+    this.v2ReadChar.addEventListener("characteristicvaluechanged", this.boundOnV2ValueChanged);
 
     // 请求硬件信息、面状态、电量
     await this.sendV2Request(5);  // hardware info
@@ -461,14 +581,15 @@ export class GanCube {
     if (!this.v4ReadChar) throw new Error("找不到 v4 read characteristic");
 
     await this.v4ReadChar.startNotifications();
-    this.v4ReadChar.addEventListener("characteristicvaluechanged", (e) => {
+    this.boundOnV4ValueChanged = (e: Event) => {
       const value = (e.target as BluetoothRemoteGATTCharacteristic).value;
       if (!value) return;
       const bytes = new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
       this.notificationQueue = this.notificationQueue
         .then(() => this.handleV4Event(new DataView(bytes.buffer)))
         .catch((err: unknown) => console.error("[gan-cube] v4 通知处理异常:", err));
-    });
+    };
+    this.v4ReadChar.addEventListener("characteristicvaluechanged", this.boundOnV4ValueChanged);
 
     await this.sendV4HardwareInfoRequest();
     await this.sendV4FaceletsRequest();
@@ -591,10 +712,16 @@ export class GanCube {
       try {
         const decrypted = await decodeGanValue(this.decoder, rawBytes);
         bytes = Array.from(decrypted);
+        this.decryptFailures = 0;
       } catch (err) {
-        console.error("[gan-cube] AES 解密失败，回退到明文:", err);
-        bytes = [];
-        for (let i = 0; i < value.byteLength; i++) bytes.push(value.getUint8(i));
+        this.onPacketCb?.({
+          protocol: "gan-v2",
+          receivedAt: locTime,
+          mode: null,
+          rawBytes: Array.from(rawBytes),
+        });
+        this.handleDecryptFailure(err);
+        return;
       }
     } else {
       // 未配置解密器（明文模式）
@@ -607,6 +734,14 @@ export class GanCube {
 
     // 前 4 位是 mode
     const mode = parseInt(binaryStr.slice(0, 4), 2);
+    this.packetRecorder.annotateLast(bytes, mode);
+    this.onPacketCb?.({
+      protocol: "gan-v2",
+      receivedAt: locTime,
+      mode,
+      rawBytes: Array.from(rawBytes),
+      decodedBytes: [...bytes],
+    });
     console.log(`[gan-cube] v2 event mode=${mode} bytes=${value.byteLength}`);
 
     if (mode === 2) {
@@ -621,7 +756,17 @@ export class GanCube {
         this.onMoveCb?.({ ...item, locTime });
       }
     } else if (mode === 4) {
-      console.log("[gan-cube] v2 facelets event（魔方面状态）");
+      const state = parseGanV2CubeStatePacket(bytes);
+      if (!state) {
+        console.warn("[gan-cube] v2 局面包校验失败，不能建立动作计数基线");
+        return;
+      }
+      // 连接/更新 MAC 后的首个状态包是动作流起点；不设基线会静默吞掉第一条实际转动。
+      if (this.prevMoveCnt === -1) {
+        this.prevMoveCnt = state.moveCnt;
+      }
+      this.latestFacelets = state.facelets;
+      this.pendingFaceletRequest?.(state.facelets);
     } else if (mode === 5) {
       console.log("[gan-cube] v2 hardware info event");
       const hardwareVersion = parseInt(binaryStr.slice(8, 16), 2) + "." + parseInt(binaryStr.slice(16, 24), 2);
@@ -635,7 +780,7 @@ export class GanCube {
     } else if (mode === 1) {
       const gyro = parseGanV2GyroPacket(bytes);
       if (!gyro) return;
-      this.onGyroCb?.({ ...gyro, locTime });
+      this.onGyroCb?.(gyro.quaternion);
     } else {
       console.warn(`[gan-cube] v2 unknown event mode=${mode}`);
     }
@@ -645,10 +790,29 @@ export class GanCube {
     const locTime = Date.now();
     const rawBytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
     this.packetRecorder.record(BlePacketProtocol.GanV4, rawBytes, locTime);
-    const bytes = await this.decodeValue(value);
+    let bytes: number[];
+    try {
+      bytes = await this.decodeValue(value);
+    } catch {
+      this.onPacketCb?.({
+        protocol: "gan-v4",
+        receivedAt: locTime,
+        mode: null,
+        rawBytes: Array.from(rawBytes),
+      });
+      return;
+    }
     const binaryStr = bytes.map((b) => b.toString(2).padStart(8, "0")).join("");
     const mode = parseInt(binaryStr.slice(0, 8), 2);
     const len = parseInt(binaryStr.slice(8, 16), 2);
+    this.packetRecorder.annotateLast(bytes, mode);
+    this.onPacketCb?.({
+      protocol: "gan-v4",
+      receivedAt: locTime,
+      mode,
+      rawBytes: Array.from(rawBytes),
+      decodedBytes: [...bytes],
+    });
 
     if (mode === 0x01) {
       this.prevMoveLocTime = locTime;
@@ -709,7 +873,16 @@ export class GanCube {
       this.onBatteryCb?.(level);
     } else if ([0xf5, 0xf6, 0xfa, 0xfc, 0xfd, 0xfe, 0xff].includes(mode)) {
       console.log(`[gan-cube] v4 hardware info mode=0x${mode.toString(16)}`);
-    } else if (mode !== 0xec) {
+    } else if (mode === 0xec) {
+      const gyroPacket = parseGanV4GyroPacket(bytes);
+      if (!gyroPacket) return;
+      this.onGyroCb?.(gyroPacket.quaternion);
+      this.onV4GyroPacketCb?.({
+        ...gyroPacket,
+        rawBytes: Array.from(rawBytes),
+        locTime,
+      });
+    } else {
       console.warn(`[gan-cube] v4 unknown event mode=0x${mode.toString(16)}`);
     }
   }
@@ -719,10 +892,11 @@ export class GanCube {
     if (!this.decoder) return Array.from(raw);
     try {
       const decrypted = await decodeGanValue(this.decoder, raw);
+      this.decryptFailures = 0;
       return Array.from(decrypted);
     } catch (err) {
-      console.error("[gan-cube] AES 解密失败，回退到明文:", err);
-      return Array.from(raw);
+      this.handleDecryptFailure(err);
+      throw err;
     }
   }
 
@@ -732,8 +906,35 @@ export class GanCube {
     return "";
   }
 
+  /** 连续解密失败超过阈值时断开连接并通知 UI，避免垃圾 move 流 */
+  private handleDecryptFailure(err: unknown): void {
+    this.decryptFailures++;
+    console.error(`[gan-cube] AES 解密失败 (${this.decryptFailures}/${GanCube.MAX_DECRYPT_FAILURES}):`, err);
+    if (this.decryptFailures >= GanCube.MAX_DECRYPT_FAILURES) {
+      this.onDecryptErrorCb?.("连续解密失败，MAC 地址可能错误，已自动断开。请重新配对。");
+      void this.disconnect();
+    }
+  }
+
   private handleDisconnect(): void {
     console.log("[gan-cube] 设备已断开");
+
+    // 移除事件监听器，防止重连时泄漏
+    if (this.device && this.boundOnGattDisconnect) {
+      this.device.removeEventListener("gattserverdisconnected", this.boundOnGattDisconnect);
+    }
+    if (this.v2ReadChar && this.boundOnV2ValueChanged) {
+      this.v2ReadChar.removeEventListener("characteristicvaluechanged", this.boundOnV2ValueChanged);
+      this.v2ReadChar.stopNotifications().catch(() => {});
+    }
+    if (this.v4ReadChar && this.boundOnV4ValueChanged) {
+      this.v4ReadChar.removeEventListener("characteristicvaluechanged", this.boundOnV4ValueChanged);
+      this.v4ReadChar.stopNotifications().catch(() => {});
+    }
+
+    this.boundOnGattDisconnect = null;
+    this.boundOnV2ValueChanged = null;
+    this.boundOnV4ValueChanged = null;
     this.device = null;
     this.server = null;
     this.v2ReadChar = null;
@@ -741,6 +942,7 @@ export class GanCube {
     this.v4ReadChar = null;
     this.v4WriteChar = null;
     this.prevMoveCnt = -1;
+    this.decryptFailures = 0;
     this.onDisconnectCb?.();
   }
 
@@ -761,9 +963,28 @@ export class GanCube {
 
   onMove(cb: CubeCallback): void { this.onMoveCb = cb; }
   onBattery(cb: BatteryCallback): void { this.onBatteryCb = cb; }
-  onGyro(cb: GyroCallback): void { this.onGyroCb = cb; }
+  onGyro(cb: CubeGyroCallback): void { this.onGyroCb = cb; }
+  onPacket(cb: CubePacketCallback): void { this.onPacketCb = cb; }
+  onV4GyroPacket(cb: GanV4GyroPacketCallback): void { this.onV4GyroPacketCb = cb; }
   onConnect(cb: ConnectCallback): void { this.onConnectCb = cb; }
   onDisconnect(cb: DisconnectCallback): void { this.onDisconnectCb = cb; }
+  onDecryptError(cb: (message: string) => void): void { this.onDecryptErrorCb = cb; }
+
+  /** 重连到之前已授权的设备（不弹选择器），失败时 reject */
+  async reconnect(): Promise<void> {
+    if (!this.device?.gatt) throw new Error("无已授权设备，无法重连");
+    this.boundOnGattDisconnect = () => this.handleDisconnect();
+    this.device.addEventListener("gattserverdisconnected", this.boundOnGattDisconnect);
+    this.server = await this.device.gatt.connect();
+    const services = await this.server.getPrimaryServices();
+    const serviceUuids = services.map((s) => s.uuid.toUpperCase());
+    if (serviceUuids.includes(SERVICE_UUID_V2DATA.toUpperCase())) {
+      await this.initV2(services);
+    } else if (serviceUuids.some((u) => u.startsWith("00000010-0000-fff7"))) {
+      await this.initV4(services);
+    }
+    this.onConnectCb?.();
+  }
 }
 
 /** 单例导出 */

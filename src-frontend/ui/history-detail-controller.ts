@@ -23,9 +23,11 @@ export class HistoryDetailController {
     const scramble = solve.scramble || "旧记录未保存打乱";
     const solution = showSolution
       ? (solve.moves?.join(" ") || "旧记录未保存解法序列")
-      : "点击“查看解法”显示本次还原步骤。";
+      : "点击\"查看解法\"显示本次还原步骤。";
+    const inspectionValue = solve.inspectionDuration ? `${(solve.inspectionDuration / 1000).toFixed(2)}s` : "—";
     const detailMetrics = this.isDetailedScoreMode()
-      ? `<div><span>Cross</span><strong>${(solve.crossDuration / 1000).toFixed(2)}s</strong></div>
+      ? `<div><span>观察</span><strong>${inspectionValue}</strong></div>
+         <div><span>Cross</span><strong>${(solve.crossDuration / 1000).toFixed(2)}s</strong></div>
          <div><span>F2L</span><strong>${(solve.f2lDuration / 1000).toFixed(2)}s</strong></div>
          <div><span>OLL</span><strong>${(solve.ollDuration / 1000).toFixed(2)}s</strong></div>
          <div><span>PLL</span><strong>${(solve.pllDuration / 1000).toFixed(2)}s</strong></div>`

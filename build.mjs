@@ -6,17 +6,20 @@
  */
 
 import * as esbuild from "esbuild";
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 if (!existsSync("./dist")) {
   mkdirSync("./dist");
 }
 
 await esbuild.build({
-  entryPoints: ["src-frontend/bootstrap.ts"],
+  entryPoints: {
+    bundle: "src-frontend/bootstrap.ts",
+    "cross-scramble-worker": "src-frontend/core/cross-scramble-worker.ts",
+  },
   bundle: true,
   format: "iife",
-  outfile: "dist/bundle.js",
+  outdir: "dist",
   target: ["es2020"],
   sourcemap: true,
   minify: false,
@@ -24,6 +27,9 @@ await esbuild.build({
 });
 
 copyFileSync("index.html", "dist/index.html");
+const bundleVersion = Date.now();
+const distIndex = readFileSync("dist/index.html", "utf8");
+writeFileSync("dist/index.html", distIndex.replace('src="bundle.js"', `src="bundle.js?v=${bundleVersion}"`));
 
 console.log("✓ 前端构建完成 → dist/bundle.js");
 console.log("✓ 启动后端: npm run server");
