@@ -1,9 +1,10 @@
 /**
  * 基于实战 caseEvents 的本地教练选择器。
- * 不等待 AI 才给训练方向：用最近可信常规复原中的识别停顿与冗余步数，选出唯一下一项 CASE。
+ * 不等待 AI 才给训练方向：用起手停顿与同一解法参照的步数差选出下一项 CASE。
  */
 
 import type { AnalysisInput, CaseEvent } from "../../src-shared/analysis-types.ts";
+import { hasSameCaseReference } from "../../src-shared/analysis-coaching.ts";
 import { resolvePersistedSolveTrust } from "./solve-validation.ts";
 
 export interface CaseCoachRecommendation {
@@ -12,7 +13,7 @@ export interface CaseCoachRecommendation {
   samples: number;
   hits: number;
   averageRecognitionPauseMs: number;
-  averageMoveDelta: number;
+  averageMoveDelta: number | null;
   reason: string;
 }
 
@@ -23,10 +24,14 @@ function average(values: number[]): number {
   return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
+function averageMoveDeltaFor(events: CaseEvent[]): number | null {
+  return hasSameCaseReference(events) ? average(events.map((event) => event.moveDelta)) : null;
+}
+
 function score(events: CaseEvent[]): number {
-  // 1 秒识别停顿约等于 1.5 个冗余步的优先级，二者都低时不做无意义推荐。
+  // 排序使用可比的步数差，不能把更换参照的成绩混成同一个手法的弱项。
   return average(events.map((event) => event.recognitionPauseMs)) / 1000
-    + Math.max(0, average(events.map((event) => event.moveDelta))) * 0.67;
+    + Math.max(0, averageMoveDeltaFor(events) ?? 0) * 0.67;
 }
 
 /** 从最近最多 20 把可信常规复原中选出最值得立刻训练的一个 CASE。 */
@@ -51,9 +56,10 @@ export function pickNextCaseTraining(solves: AnalysisInput[]): CaseCoachRecommen
   if (!candidate) return null;
   const first = candidate.events[0];
   const averageRecognitionPauseMs = average(candidate.events.map((event) => event.recognitionPauseMs));
-  const averageMoveDelta = average(candidate.events.map((event) => event.moveDelta));
-  const pauseText = `${(averageRecognitionPauseMs / 1000).toFixed(2)}s 识别停顿`;
-  const moveText = averageMoveDelta > 0 ? `平均多 ${averageMoveDelta.toFixed(1)} 步` : "步数已接近标准";
+  const averageMoveDelta = averageMoveDeltaFor(candidate.events);
+  const pauseText = `${(averageRecognitionPauseMs / 1000).toFixed(2)}s 起手前停顿`;
+  const moveText = averageMoveDelta === null ? "解法参照不一致，暂不汇总步数差"
+    : averageMoveDelta > 0 ? `比所选解法平均多 ${averageMoveDelta.toFixed(1)} 步` : "步数接近所选解法参照";
   return {
     formulaId: candidate.formulaId,
     stage: first.stage,

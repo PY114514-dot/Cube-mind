@@ -120,10 +120,28 @@ export function flagCaseEvents(events: CaseEvent[] | undefined, averageGap: numb
     || event.recognitionPauseMs > Math.max(300, averageGap > 0 ? averageGap * 1.5 : 2000)).slice(0, limit);
 }
 
+/** 同一解法快照才允许汇总或比较参照步数差。 */
+export function hasSameCaseReference(events: CaseEvent[]): boolean {
+  const moves = events[0]?.referenceAlgorithm?.moves.join(" ");
+  return moves !== undefined && events.every((event) => event.referenceAlgorithm?.moves.join(" ") === moves);
+}
+
 function replayFor(solve: AnalysisSolve, solveIndex: number, start: number | undefined, end: number | undefined): CoachingEvidence["replay"] {
   if (typeof start !== "number" || typeof end !== "number" || !Number.isInteger(start) || !Number.isInteger(end)
     || start < 0 || end <= start || end > (solve.moves?.length ?? 0) || typeof solve.scramble !== "string") return undefined;
   return { solveIndex, startMoveIndex: start, endMoveIndex: end };
+}
+
+function caseExecutionText(solve: AnalysisSolve, event: CaseEvent): string {
+  const { startMoveIndex: start, endMoveIndex: end } = event;
+  if (start === undefined || end === undefined || !Number.isInteger(start) || !Number.isInteger(end)
+    || start < 0 || end <= start || end > (solve.moves?.length ?? 0)
+    || solve.moveGaps?.length !== solve.moves?.length) return "执行时间未完整记录";
+  const gaps = solve.moveGaps?.slice(start + 1, end);
+  if (!gaps || gaps.length !== event.execMoves - 1
+    || gaps.some((gap) => !Number.isFinite(gap) || gap < 0)) return "执行时间未完整记录";
+  const duration = gaps.reduce((sum, gap) => sum + gap, 0);
+  return `首末动作间隔 ${(duration / 1000).toFixed(2)}s（不含起手前等待，含片段内停顿）`;
 }
 
 function caseEvidence(input: AnalysisInput): CoachingEvidence[] {
@@ -146,11 +164,14 @@ function caseEvidence(input: AnalysisInput): CoachingEvidence[] {
     const prior = baseline
       ? `；此前 ${baseline.sampleCount} 把同 CASE 中位数：停顿 ${(baseline.recognitionPauseMs / 1000).toFixed(2)}s、${baseline.execMoves} 步`
       : "；同 CASE 个人基准不足";
+    const reference = event.referenceAlgorithm
+      ? `${event.referenceAlgorithm.name}参照 ${event.expectedMoves} 步（${event.referenceAlgorithm.moves.join(" ")}）`
+      : `参照 ${event.expectedMoves} 步`;
     return [{
       id: `case:${stage}:${caseId}`, kind: "case", stage, caseId,
       severity: caseEventSeverity(Math.max(...flagged.map((item) => item.event.moveDelta)), Math.max(...flagged.map((item) => item.event.recognitionPauseMs))),
       description: `${caseId} 在 ${solveCount} 把中命中 ${group.length} 次，${flagged.length} 次出现停顿或步数偏差`,
-      evidence: `本窗中位数：起手前停顿 ${(pause / 1000).toFixed(2)}s、${moves} 步；代表为第 ${solveIndex + 1} 把：实际 ${event.execMoves} 步 vs 公式库参照 ${event.expectedMoves} 步，停顿 ${(event.recognitionPauseMs / 1000).toFixed(2)}s${prior}；${solveCount < 3 ? "样本较少，暂不判断持续弱项" : "重复命中可供复盘，仍不能证明停顿原因"}`,
+      evidence: `本窗中位数：起手前停顿 ${(pause / 1000).toFixed(2)}s、${moves} 步；代表为第 ${solveIndex + 1} 把：实际 ${event.execMoves} 步 vs ${reference}，起手前停顿 ${(event.recognitionPauseMs / 1000).toFixed(2)}s；${caseExecutionText(solves[solveIndex], event)}${prior}；${solveCount < 3 ? "样本较少，暂不判断持续弱项" : "重复命中可供复盘，仍不能证明停顿原因"}`,
       replay: replayFor(solves[solveIndex], solveIndex, event.startMoveIndex, event.endMoveIndex),
     }];
   }).sort((a, b) => Number(b.severity === "high") - Number(a.severity === "high")).slice(0, 6);

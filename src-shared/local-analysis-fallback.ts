@@ -34,7 +34,7 @@ function caseDrill(input: AnalysisInput, top: CoachingEvidence): AnalysisDrill {
     reps: "下一组常规复原",
   } : {
     title: `${top.caseId} 回放对照专项`,
-    detail: `先查看代表局面，核对目标块与动作，再做固定 CASE 专项。公式库步数是参照，额外 AUF 和衔接动作需要结合局面判断。${observing}`,
+    detail: `先查看代表局面，核对目标块与动作，再做固定 CASE 专项。所选解法步数是参照，额外 AUF 和衔接动作需要结合局面判断。${observing}`,
     reps: "10 次，并记录起手前用时",
   };
 }

@@ -267,6 +267,7 @@ const { timerController, moveController, connectSyncController, phaseIndicatorCo
   historyController,
   practiceController,
   scrambleController,
+  formulaLibrary,
   closeResultModals,
   log,
 });

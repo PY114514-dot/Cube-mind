@@ -10,6 +10,7 @@ import type { AnalysisInput } from "../agent/types.ts";
 import type { Timer } from "../core/timer.ts";
 import type { HistoryStore } from "../core/history-store.ts";
 import { analyzeCompletedSolve, type CompletedSolveAnalysis } from "../core/completed-solve-analysis.ts";
+import type { CaseEventAssemblyInput } from "../core/case-event-assembly.ts";
 import { buildCompletedSolveRecord } from "../core/completed-solve-record.ts";
 import { buildSolveCompletionPlan, type SolveCompletionPlan } from "../core/solve-completion-plan.ts";
 import { summarizePrettyReconstruction } from "../core/move-reconstruction.ts";
@@ -58,6 +59,7 @@ export interface SolveCompletionDependencies {
   ble: SolveCompletionBle;
   history: SolveCompletionHistory;
   practice: SolveCompletionPractice;
+  getCaseReference: CaseEventAssemblyInput["getCaseReference"];
   log: (msg: string, type?: "info" | "move" | "error") => void;
 }
 
@@ -156,6 +158,7 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
       solveStartTime: timerState.startTime,
       solveEndTime: timerState.endTime,
       physicalState,
+      getCaseReference: deps.getCaseReference,
       allowUnverifiedMoveScore: deps.ble.allowsUnverifiedMoveScore(),
       externalAnomalies: state.solve.hasPermanentMoveGap ? ["missing-event"] : [],
     });

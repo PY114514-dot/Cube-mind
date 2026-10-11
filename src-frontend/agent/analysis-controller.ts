@@ -28,23 +28,30 @@ export interface AnalysisControllerOptions {
   onModalOpen?: () => void;
 }
 
+function showSampleNotice(elements: AnalysisControllerElements, count: number): void {
+  elements.analysisSampleStatus.textContent = getAnalysisSampleNotice(count);
+  elements.analysisSampleStatus.className = count <= 0 ? "sample-notice error" : count < 5 ? "sample-notice warning" : "sample-notice info";
+}
+
 export function bindAnalysisController(options: AnalysisControllerOptions): void {
   const { elements, getRecords, renderResult, log, onBeforeAnalyze, onAfterAnalyze, onModalOpen } = options;
+  const selectedScope = (): number => {
+    const validCount = Math.min(MAX_ANALYSIS_SOLVES, getAnalysisEligibleSolves(getRecords()).length);
+    return Math.min(validCount, Math.max(1, Math.floor(Number(elements.analysisCount.value)) || 1));
+  };
+  elements.analysisCount.oninput = () => showSampleNotice(elements, selectedScope());
   elements.btnOpenAgent.onclick = () => {
     const validCount = Math.min(MAX_ANALYSIS_SOLVES, getAnalysisEligibleSolves(getRecords()).length);
     elements.analysisCount.max = String(Math.max(1, validCount));
     elements.analysisCount.value = String(Math.min(12, validCount || 1));
-    const notice = getAnalysisSampleNotice(validCount);
-    elements.analysisSampleStatus.textContent = notice;
-    // 根据样本数量应用不同的样式
-    elements.analysisSampleStatus.className = validCount <= 0 ? "sample-notice error" : validCount < 5 ? "sample-notice warning" : "sample-notice info";
+    showSampleNotice(elements, selectedScope());
     elements.agentModal.classList.add("open");
     elements.agentBackdrop.classList.add("open");
     if (onModalOpen) onModalOpen();
   };
   elements.btnRunAnalysis.onclick = async () => {
-    const validCount = Math.min(MAX_ANALYSIS_SOLVES, getAnalysisEligibleSolves(getRecords()).length);
-    const scope = Math.min(validCount, Math.max(1, Math.floor(Number(elements.analysisCount.value)) || 1));
+    const scope = selectedScope();
+    showSampleNotice(elements, scope);
     const input = createHistoryAnalysisInput(getRecords(), scope);
     if (!input) {
       elements.agentOutput.innerHTML = '<p class="placeholder">请先完成至少一把，才可以分析历史数据。</p>';

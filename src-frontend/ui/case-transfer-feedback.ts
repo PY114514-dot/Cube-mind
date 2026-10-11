@@ -13,6 +13,8 @@ export function formatCaseTransferFeedback(progress: CaseTransferProgress): stri
   const hits = `训练前 ${before.caseHits} 次、训练后 ${after.caseHits} 次命中`;
   if (!progress.readyForComparison) return `${formulaId} · ${hits}。${windowFull ? "观察窗已满，命中不足，暂不判断变化" : "前后各至少 3 次命中后展示变化"}。`;
   const recognition = `${seconds(before.averageRecognitionPauseMs)} → ${seconds(after.averageRecognitionPauseMs)}`;
-  const moves = `${before.averageMoveDelta?.toFixed(1) ?? "—"} → ${after.averageMoveDelta?.toFixed(1) ?? "—"} 步`;
-  return `${formulaId} · ${hits} · 识别停顿 ${recognition} · 步数偏差 ${moves}`;
+  const moves = before.averageMoveDelta !== null && after.averageMoveDelta !== null
+    ? `步数偏差 ${before.averageMoveDelta.toFixed(1)} → ${after.averageMoveDelta.toFixed(1)} 步`
+    : "解法参照不一致或记录不足，暂不比较步数差";
+  return `${formulaId} · ${hits} · 起手前停顿 ${recognition} · ${moves}`;
 }

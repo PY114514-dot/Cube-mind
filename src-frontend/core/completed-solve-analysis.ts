@@ -6,7 +6,7 @@
 import { parseCfop, type CfopResult } from "./cfop-parser.ts";
 import { analyzeF2lSlots, type F2lSlotAnalysis } from "./f2l-slot-tracker.ts";
 import { analyzeSolveSteps, type SolveReview } from "./solve-review.ts";
-import { assembleCaseEvents } from "./case-event-assembly.ts";
+import { assembleCaseEvents, type CaseEventAssemblyInput } from "./case-event-assembly.ts";
 import type { CaseEvent } from "../../src-shared/analysis-types.ts";
 import {
   isMoveStreamReliable,
@@ -28,6 +28,7 @@ export interface CompletedSolveAnalysisInput {
   solveStartTime: number;
   solveEndTime: number;
   physicalState: PhysicalCubeState;
+  getCaseReference: CaseEventAssemblyInput["getCaseReference"];
   /** GAN v4 等无可靠实体回读协议可保留连续动作流计时，但不生成分析。 */
   allowUnverifiedMoveScore?: boolean;
   /** 协议层确认无法恢复的缺步，会让本把退出 CFOP/AI。 */
@@ -76,6 +77,7 @@ export function analyzeCompletedSolve(input: CompletedSolveAnalysisInput): Compl
     moveGaps: input.moveGaps,
     cfop: cfopResult,
     f2lSlots: f2lSlotAnalysis,
+    getCaseReference: input.getCaseReference,
   });
   const caseEvents = assembledEvents.length > 0 ? assembledEvents : undefined;
   return { validation, trust, reliableMoveStream, cfopResult, stepReview, f2lSlotAnalysis, caseEvents };

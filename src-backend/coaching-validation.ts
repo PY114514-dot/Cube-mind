@@ -38,7 +38,8 @@ function parseMetrics(value: unknown, limit: number): CaseTransferMetrics | null
       ? { caseHits: 0, averageRecognitionPauseMs: null, averageMoveDelta: null } : null;
   }
   if (!isNonNegativeNumber(value.averageRecognitionPauseMs)
-    || typeof value.averageMoveDelta !== "number" || !Number.isFinite(value.averageMoveDelta)) return null;
+    || (value.averageMoveDelta !== null
+      && (typeof value.averageMoveDelta !== "number" || !Number.isFinite(value.averageMoveDelta)))) return null;
   return { caseHits: value.caseHits, averageRecognitionPauseMs: value.averageRecognitionPauseMs, averageMoveDelta: value.averageMoveDelta };
 }
 

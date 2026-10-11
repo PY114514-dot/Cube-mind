@@ -4,6 +4,7 @@
  */
 
 import type { AnalysisInput, CaseEvent, CaseTransferMetrics, CaseTransferProgress } from "../../src-shared/analysis-types.ts";
+import { hasSameCaseReference } from "../../src-shared/analysis-coaching.ts";
 import type { FormulaAssignment } from "./assignment-progress.ts";
 import { isNormalAnalysisEligible } from "./solve-validation.ts";
 
@@ -23,9 +24,12 @@ function average(values: number[]): number | null {
   return values.length === 0 ? null : values.reduce((total, value) => total + value, 0) / values.length;
 }
 
-function metricsFor(solves: AnalysisInput[], formulaId: string): CaseTransferMetrics {
-  const events: CaseEvent[] = solves.flatMap((solve) =>
+function caseEventsFor(solves: AnalysisInput[], formulaId: string): CaseEvent[] {
+  return solves.flatMap((solve) =>
     (solve.caseEvents ?? []).filter((event) => event.caseId === formulaId));
+}
+
+function metricsFor(events: CaseEvent[]): CaseTransferMetrics {
   return {
     caseHits: events.length,
     averageRecognitionPauseMs: average(events.map((event) => event.recognitionPauseMs)),
@@ -44,8 +48,15 @@ export function buildCaseTransferProgress(
     const normal = solves.filter(isNormalAnalysisReady);
     const before = takeNearest(normal.filter((solve) => (solve.completedAt ?? 0) < assignment.trainedAt!), sampleSize, true);
     const after = takeNearest(normal.filter((solve) => (solve.completedAt ?? 0) >= assignment.trainedAt!), sampleSize, false);
-    const beforeMetrics = metricsFor(before, assignment.formulaId);
-    const afterMetrics = metricsFor(after, assignment.formulaId);
+    const beforeEvents = caseEventsFor(before, assignment.formulaId);
+    const afterEvents = caseEventsFor(after, assignment.formulaId);
+    const beforeMetrics = metricsFor(beforeEvents);
+    const afterMetrics = metricsFor(afterEvents);
+    // 换成更长的参照也会让步数差下降，不能把更换手法当成训练进步。
+    if (!hasSameCaseReference([...beforeEvents, ...afterEvents])) {
+      beforeMetrics.averageMoveDelta = null;
+      afterMetrics.averageMoveDelta = null;
+    }
     return [{
       formulaId: assignment.formulaId,
       stage: assignment.stage,

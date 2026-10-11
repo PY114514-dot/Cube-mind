@@ -236,6 +236,7 @@ export interface SolvePipelineDeps {
   historyController: HistoryController;
   practiceController: ReturnType<typeof createPracticeController>;
   scrambleController: ScrambleController;
+  formulaLibrary: FormulaLibraryController;
   closeResultModals: () => void;
   log: LogFn;
 }
@@ -291,6 +292,7 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
     {
       timer,
       historyStore,
+      getCaseReference: (caseId) => deps.formulaLibrary.getCaseReference(caseId),
       ble: {
         requestCurrentFacelets: () => bleController.requestCurrentFacelets(),
         allowsUnverifiedMoveScore: () => bleController.allowsUnverifiedMoveScore(),
@@ -309,9 +311,7 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
     },
   );
 
-  const { timerController, phaseIndicatorController } = setupTimerRuntime(
-    deps, () => solveCompletionController.onSolveComplete(),
-  );
+  const { timerController, phaseIndicatorController } = setupTimerRuntime(deps, () => solveCompletionController.onSolveComplete());
 
   const moveController = createMoveController(state, {
     timer,

@@ -1,15 +1,14 @@
 /**
  * core/case-event-assembly.ts
  * 把 P0-1（F2L 槽位 caseId）与 P0-2（OLL/PLL caseId）的识别输出组装成
- * AGENT 可直接消费的 CaseEvent 证据流：每个 case 的实际步数、标准步数、
- * 步数差与识别停顿。停顿按 move 索引与 moveGaps 对齐。
+ * AGENT 可直接消费的 CaseEvent 证据流：实际步数、所选解法参照与起手停顿。
+ * 停顿按 move 索引与 moveGaps 对齐，不能仅凭间隔推断停顿原因。
  */
 
 import type { CaseEvent } from "../../src-shared/analysis-types.ts";
 import type { CfopResult } from "./cfop-parser.ts";
 import type { F2lSlotAnalysis } from "./f2l-slot-tracker.ts";
 import { isCubeSolved, isOllComplete } from "./last-layer-recognizer.ts";
-import { getFormulaById } from "../formula/formula-library.ts";
 import { CubieCube, parseMove } from "../utils/mathlib.ts";
 
 export interface CaseEventAssemblyInput {
@@ -18,11 +17,12 @@ export interface CaseEventAssemblyInput {
   moveGaps: number[];
   cfop: CfopResult;
   f2lSlots: F2lSlotAnalysis | null;
+  getCaseReference: (caseId: string) => CaseEvent["referenceAlgorithm"];
 }
 
 /** 按时间顺序组装本把的全部 case 事件：F2L 槽位完成序 → OLL → PLL。 */
 export function assembleCaseEvents(input: CaseEventAssemblyInput): CaseEvent[] {
-  const events: CaseEvent[] = [];
+  const events: (CaseEvent | null)[] = [];
 
   const slots = (input.f2lSlots?.slots ?? [])
     .filter((slot) =>
@@ -44,7 +44,7 @@ export function assembleCaseEvents(input: CaseEventAssemblyInput): CaseEvent[] {
       recognitionPauseMs: pauseBeforeMove(input.moveGaps, firstMoveIndex),
       startMoveIndex: firstMoveIndex,
       endMoveIndex: slot.completedAtMove,
-    }));
+    }, input.getCaseReference));
   }
 
   const states = rebuildStates(input.scrambleMoves, input.solveMoves);
@@ -58,7 +58,7 @@ export function assembleCaseEvents(input: CaseEventAssemblyInput): CaseEvent[] {
       recognitionPauseMs: pauseBeforeMove(input.moveGaps, startMoveIndex),
       startMoveIndex,
       endMoveIndex: startMoveIndex + execMoves,
-    }));
+    }, input.getCaseReference));
   }
   if (input.cfop.pllCaseId !== undefined && input.cfop.pllCaseStartIndex !== undefined) {
     const startMoveIndex = input.cfop.pllCaseStartIndex + 1;
@@ -70,9 +70,9 @@ export function assembleCaseEvents(input: CaseEventAssemblyInput): CaseEvent[] {
       recognitionPauseMs: pauseBeforeMove(input.moveGaps, startMoveIndex),
       startMoveIndex,
       endMoveIndex: startMoveIndex + execMoves,
-    }));
+    }, input.getCaseReference));
   }
-  return events;
+  return events.filter((event): event is CaseEvent => event !== null);
 }
 
 function buildEvent(partial: {
@@ -82,9 +82,10 @@ function buildEvent(partial: {
   recognitionPauseMs: number;
   startMoveIndex?: number;
   endMoveIndex?: number;
-}): CaseEvent {
-  // 公式库查不到（不应发生）时按实际步数兜底，避免虚报偏差。
-  const expectedMoves = getFormulaById(partial.caseId)?.moves.length ?? partial.execMoves;
+}, getCaseReference: CaseEventAssemblyInput["getCaseReference"]): CaseEvent | null {
+  const reference = getCaseReference(partial.caseId);
+  if (!reference) return null;
+  const expectedMoves = reference.moves.length;
   return {
     stage: partial.stage,
     caseId: partial.caseId,
@@ -92,6 +93,7 @@ function buildEvent(partial: {
     execMoves: partial.execMoves,
     expectedMoves,
     moveDelta: partial.execMoves - expectedMoves,
+    referenceAlgorithm: { name: reference.name, moves: [...reference.moves] },
     startMoveIndex: partial.startMoveIndex,
     endMoveIndex: partial.endMoveIndex,
   };

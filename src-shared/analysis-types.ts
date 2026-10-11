@@ -71,7 +71,7 @@ export interface AnalysisInput {
     maxGap: number;
     pauses: Array<{ index: number; move: string; gap: number; stage: string; reason: string }>;
   };
-  /** 逐 case 识别证据流：本把命中的 F2L/OLL/PLL case 与标准公式的步数、停顿偏差。 */
+  /** 逐 case 证据：实际动作、起手停顿及保存成绩时所选解法的参照。 */
   caseEvents?: CaseEvent[];
   /** 会话级上下文：最近几把的瓶颈摘要，用于趋势判断 */
   sessionContext?: Array<{
@@ -150,19 +150,26 @@ export interface CaseTransferProgress {
   readyForComparison: boolean;
 }
 
-/** 单次解法中命中的一个训练 case 的执行证据（case 级识别与 AI 教练闭环的输入单元）。 */
+export interface CaseAlgorithmReference {
+  name: string;
+  moves: string[];
+}
+
+/** 单次解法中命中的一个训练 case 的执行证据。 */
 export interface CaseEvent {
   stage: "F2L" | "OLL" | "PLL";
   /** 公式库公式 id（如 F2L-24 / OLL-05 / PLL-T） */
   caseId: string;
-  /** 该 case 首个 move 前的停顿（识别停顿，毫秒） */
+  /** 该 case 首个 move 前的动作间隔，不能单凭间隔确定停顿原因（毫秒）。 */
   recognitionPauseMs: number;
   /** 实际执行步数 */
   execMoves: number;
-  /** 公式库标准步数 */
+  /** 所选解法的参照步数，不代表最短解或实际采用的手法。 */
   expectedMoves: number;
-  /** 实际步数 - 标准步数 */
+  /** 实际步数 - 参照步数 */
   moveDelta: number;
+  /** 保存时的解法快照；之后修改公式不能改写这把成绩的参照。 */
+  referenceAlgorithm?: CaseAlgorithmReference;
   /** 原始动作流的零基半开区间；起点局面在 startMoveIndex 步执行后。 */
   startMoveIndex?: number;
   endMoveIndex?: number;

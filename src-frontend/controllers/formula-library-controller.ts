@@ -6,6 +6,7 @@
 
 import { recommendFormulas, getFormulaById } from "../formula/formula-library.ts";
 import type { Formula, FormulaCategory } from "../formula/types.ts";
+import type { CaseAlgorithmReference } from "../../src-shared/analysis-types.ts";
 import { getFormulaSetupMoves, isFormulaDevicePracticeSafe } from "../formula/setup-validation.ts";
 import { loadCustomF2lAlgorithms, saveCustomF2lAlgorithms, validateCustomF2lAlgorithm } from "../formula/custom-f2l.ts";
 import { StaticCubePreviewAdapter } from "../ui/static-cube-preview.ts";
@@ -176,6 +177,13 @@ export class FormulaLibraryController {
 
   resolvePracticeFormula(formula: Formula): Formula {
     return this.renderer.withSelectedFormulaMoves(formula);
+  }
+
+  getCaseReference(caseId: string): CaseAlgorithmReference | undefined {
+    const formula = getFormulaById(caseId);
+    if (!formula) return undefined;
+    const variant = this.renderer.getSelectedFormulaVariant(formula);
+    return { name: variant.name, moves: [...variant.moves] };
   }
 
   private updateCustomF2l(form: HTMLFormElement, remove: boolean): void {

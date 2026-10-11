@@ -158,7 +158,10 @@ function buildTransferText(input: AnalysisInput): string {
     if (!entry.readyForComparison) return `${sampleText}；同 CASE 样本不足，暂不判断训练变化`;
     const beforePause = ((entry.before.averageRecognitionPauseMs ?? 0) / 1000).toFixed(2);
     const afterPause = ((entry.after.averageRecognitionPauseMs ?? 0) / 1000).toFixed(2);
-    return `${sampleText}；起手前平均停顿 ${beforePause}s → ${afterPause}s；与参照步数的平均差 ${entry.before.averageMoveDelta?.toFixed(1)} → ${entry.after.averageMoveDelta?.toFixed(1)}；只描述观察变化，不证明训练导致变化`;
+    const moveText = entry.before.averageMoveDelta !== null && entry.after.averageMoveDelta !== null
+      ? `与同一解法参照的平均步数差 ${entry.before.averageMoveDelta.toFixed(1)} → ${entry.after.averageMoveDelta.toFixed(1)}`
+      : "解法参照不一致或记录不足，暂不比较步数差";
+    return `${sampleText}；起手前平均停顿 ${beforePause}s → ${afterPause}s；${moveText}；只描述观察变化，不证明训练导致变化`;
   }).join("\n") || "暂无专项后的同 CASE 实战观察";
 }
 

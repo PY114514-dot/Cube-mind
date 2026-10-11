@@ -306,7 +306,7 @@ export class FormulaLibraryRenderer {
     return variants;
   }
 
-  private getSelectedFormulaVariant(formula: Formula): FormulaVariant {
+  getSelectedFormulaVariant(formula: Formula): FormulaVariant {
     const variants = this.getFormulaVariants(formula);
     const index = this.ctx.selectedFormulaVariants.get(formula.id) ?? 0;
     return variants[index] ?? variants[0];

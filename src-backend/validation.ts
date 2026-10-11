@@ -137,6 +137,16 @@ function parseCaseEvents(value: unknown): AnalysisInput["caseEvents"] | undefine
     if ((item.startMoveIndex !== undefined || item.endMoveIndex !== undefined)
       && (!isMoveCount(item.startMoveIndex) || !isMoveCount(item.endMoveIndex)
         || item.endMoveIndex - item.startMoveIndex !== item.execMoves)) return null;
+    let referenceAlgorithm: CaseEvent["referenceAlgorithm"];
+    if (item.referenceAlgorithm !== undefined) {
+      const reference = item.referenceAlgorithm;
+      if (!isRecord(reference) || typeof reference.name !== "string"
+        || reference.name.trim().length === 0 || reference.name.length > 60) return null;
+      const moves = parseMoves(reference.moves);
+      if (!moves || moves.length === 0 || moves.length > 80 || moves.length !== item.expectedMoves
+        || moves.some((move) => !/^(?:[URFDLB]w?|[MESxyzurfdlb])[2']?$/.test(move))) return null;
+      referenceAlgorithm = { name: reference.name, moves };
+    }
     return {
       stage: item.stage as CaseEvent["stage"],
       caseId: item.caseId,
@@ -144,6 +154,7 @@ function parseCaseEvents(value: unknown): AnalysisInput["caseEvents"] | undefine
       execMoves: item.execMoves,
       expectedMoves: item.expectedMoves,
       moveDelta: item.moveDelta,
+      referenceAlgorithm,
       startMoveIndex: item.startMoveIndex as number | undefined,
       endMoveIndex: item.endMoveIndex as number | undefined,
     };
