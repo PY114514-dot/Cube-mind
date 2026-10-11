@@ -1,4 +1,5 @@
 import "../bootstrap.ts";
+import "./simulator.css";
 import { ganCube } from "./simulated-cube.ts";
 import { parseMoveList } from "../core/scramble-tracker.ts";
 import type { AnalysisInput } from "../../src-shared/analysis-types.ts";
@@ -127,21 +128,36 @@ async function selfCheck(status: HTMLElement): Promise<void> {
   await checkNormalSolve();
   status.textContent = "自检 3/3：失败重试与连续两次 F2L 专项…";
   await checkPractice();
-  status.textContent = "自检通过：重置取消、常规成绩与首页统计、连续换轮、失败重试、连续 F2L 专项。";
+  status.textContent = "自检通过 · 成绩、换轮与 F2L 训练正常";
 }
 
 function init(): void {
   const status = element("#sim-status");
   const panel = element("#simulator");
+  const updateConnection = (): void => {
+    const connection = element("#sim-connection-state");
+    connection.dataset.connected = String(ganCube.connected);
+    connection.textContent = ganCube.connected ? "模拟魔方已连接" : "模拟魔方未连接";
+  };
+  // 连接菜单也能断开设备，状态由正式控制器的显示结果同步。
+  new MutationObserver(updateConnection).observe(element("#status"), { attributes: true, attributeFilter: ["class"] });
+  updateConnection();
+  element<HTMLButtonElement>("#sim-toggle-tools").onclick = () => {
+    const tools = element("#sim-tools");
+    tools.hidden = !tools.hidden;
+    element("#sim-toggle-tools").setAttribute("aria-expanded", String(!tools.hidden));
+  };
   const bind = (id: string, action: () => Promise<void>): void => {
     element<HTMLButtonElement>(id).onclick = async () => {
-      const buttons = Array.from(panel.querySelectorAll<HTMLButtonElement>("button:not(#sim-hold):not(#sim-release):not(#sim-disconnect)"));
+      const buttons = Array.from(panel.querySelectorAll<HTMLButtonElement>("button:not(#sim-toggle-tools):not(#sim-hold):not(#sim-release):not(#sim-disconnect)"));
       buttons.forEach((button) => { button.disabled = true; });
-      try { await action(); }
+      status.dataset.state = "working";
+      try { await action(); status.dataset.state = "success"; }
       catch (error) {
         console.error("[模拟验收]", error);
-        status.textContent = error instanceof Error ? error.message : String(error);
-      } finally { buttons.forEach((button) => { button.disabled = false; }); }
+        status.textContent = error instanceof Error ? error.message.replace(/^\[模拟验收\]\s*/, "") : String(error);
+        status.dataset.state = "error";
+      } finally { buttons.forEach((button) => { button.disabled = false; }); updateConnection(); }
     };
   };
   element<HTMLButtonElement>("#btn-connect-gan").textContent = "连接模拟魔方";
@@ -150,6 +166,7 @@ function init(): void {
   document.querySelectorAll<HTMLElement>(".mac-row").forEach((row) => { row.style.display = "none"; });
   bind("#sim-connect", async () => {
     if (!ganCube.connected) element<HTMLButtonElement>("#btn-connect-gan").click();
+    status.textContent = "模拟魔方已就绪，可开始自检或公式练习";
   });
   bind("#sim-scramble", async () => { await sendMoves(remainingMoves()); status.textContent = "打乱已发送"; });
   bind("#sim-solve", async () => { await sendMoves(ganCube.getSolution()); status.textContent = "逆序还原已发送"; });
@@ -161,13 +178,20 @@ function init(): void {
   // 延迟与释放按钮在动作播放时仍可操作，方便复现取消和断连竞态。
   element<HTMLButtonElement>("#sim-hold").onclick = () => {
     ganCube.holdReads = true;
+    status.dataset.state = "idle";
     status.textContent = "后续局面回读已挂起；可重置或断连，再释放旧回读";
   };
   element<HTMLButtonElement>("#sim-release").onclick = () => {
     ganCube.releaseReads();
+    status.dataset.state = "idle";
     status.textContent = "旧回读已释放";
   };
-  element<HTMLButtonElement>("#sim-disconnect").onclick = async () => { await ganCube.disconnect(); status.textContent = "模拟断连已触发"; };
+  element<HTMLButtonElement>("#sim-disconnect").onclick = async () => {
+    await ganCube.disconnect();
+    updateConnection();
+    status.dataset.state = "idle";
+    status.textContent = "模拟魔方已断开，重新连接即可继续";
+  };
   bind("#sim-gyro", async () => {
     ganCube.orient({ x: 0, y: Math.sin(Math.PI / 8), z: 0, w: Math.cos(Math.PI / 8) });
     status.textContent = "已发送 45° 姿态；可测试持握校准和视角复位";

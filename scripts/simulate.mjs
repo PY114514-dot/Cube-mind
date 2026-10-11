@@ -11,18 +11,6 @@ process.env.ALLOWED_ORIGINS = "";
 const { createApp } = await import("../src-backend/app.ts");
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = await mkdtemp(join(tmpdir(), "cubemind-simulator-"));
-const panel = `<details id="simulator" open style="padding:12px;margin-bottom:16px;border:1px solid var(--rule);border-radius:12px;background:var(--card)">
-  <summary style="cursor:pointer;font-weight:600">无设备验收 · 测试成绩与 3000 页面隔离</summary>
-  <p style="font-size:12px;color:var(--warm-gray);margin:8px 0">连接一次即可反复测试。可一键自检，或打开公式库进入专项，在下面发送解法。刷新会重建模拟魔方，真实设备连接不受影响。</p>
-  <div class="controls">
-    <button id="sim-connect">连接模拟魔方</button><button id="sim-check">一键自检</button>
-    <button id="sim-scramble" class="ghost">执行剩余打乱</button><button id="sim-solve" class="ghost">逆序还原</button>
-    <button id="sim-hold" class="ghost">延迟局面回读</button><button id="sim-release" class="ghost">释放旧回读</button>
-    <button id="sim-disconnect" class="ghost">模拟断连</button><button id="sim-gyro" class="ghost">模拟姿态</button>
-  </div>
-  <div class="controls"><label for="sim-moves">动作序列</label><input id="sim-moves" value="R U R'" style="flex:1;min-width:120px;margin:0"><button id="sim-send">发送动作</button></div>
-  <p id="sim-status" role="status" style="font-size:13px;margin-top:8px">等待连接模拟魔方；自检约 15 秒，会生成四把测试成绩。</p>
-</details>`;
 
 const context = await esbuild.context({
   absWorkingDir: root,
@@ -48,7 +36,10 @@ app.post("/api/diagnostics", (_req, res) => res.sendStatus(204));
 app.get("/api/formula-alternatives", (_req, res) => res.json({ alternatives: [] }));
 app.get("/", async (_req, res, next) => {
   try {
-    const html = await readFile(join(root, "index.html"), "utf8");
+    const [html, panel] = await Promise.all([
+      readFile(join(root, "index.html"), "utf8"),
+      readFile(join(root, "src-frontend/testing/simulator-panel.html"), "utf8"),
+    ]);
     res.set("Cache-Control", "no-store").send(html.replace('<main id="main-content"', `${panel}<main id="main-content"`));
   } catch (error) { next(error); }
 });
