@@ -43,3 +43,12 @@ export function getPaintedStickerCount(state: CubeEditorState): number {
 export function toFaceletString(state: CubeEditorState): string {
   return CUBE_FACES.flatMap((face) => state.stickers[face]).map((sticker) => sticker ?? "?").join("");
 }
+
+/** 编辑器颜色 W/R/G/Y/O/B 转为渲染器和 BLE 共用的 URFDLB。 */
+export function toVisualizerFacelets(state: CubeEditorState): string {
+  const colorToFace: Record<CubeColor, string> = { W: "U", R: "R", G: "F", Y: "D", O: "L", B: "B" };
+  return CUBE_FACES
+    .flatMap((face) => state.stickers[face])
+    .map((sticker) => sticker === null ? "?" : colorToFace[sticker])
+    .join("");
+}

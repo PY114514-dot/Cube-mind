@@ -89,11 +89,11 @@ export const OLL_FORMULAS: Formula[] = OLL_SEEDS.map((seed) => ({
   name: `OLL #${seed.id}: ${seed.name}`,
   caseImage: caseImage(seed),
   moves: moves(seed.moves),
-  recognition: `识别 OLL #${seed.id}：先看顶面黄块形状，再用侧面黄贴纸确认方向。该 case 属于 ${seed.tags.join(" / ")}。`,
+  recognition: `识别 OLL #${seed.id}：先看顶面黄块形状，再用侧面黄贴纸确认方向。该 case 属于 ${seed.tags.join(" · ")}。`,
   execution: `按 ${seed.moves} 执行。练习时先固定 AUF 方向，确认起手面，再逐步压到一口气完成整条 OLL。`,
   difficulty: seed.difficulty,
   tags: seed.tags,
-  source: "ALGDB / SpeedCubeDB CFOP OLL 57 case",
+  source: "ALGDB · SpeedCubeDB CFOP OLL 57 case",
 }));
 
 /** 2-look OLL 推荐集合：十字成形 + 角块朝向高频 case */

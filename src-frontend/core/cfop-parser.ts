@@ -2,6 +2,13 @@
 
 import { CubieCube, parseMove, SOLVED_FACELET } from "../utils/mathlib.ts";
 import { getCfopPhase, type CfopPhase } from "./cstimer-cfop.ts";
+import {
+  isCubeSolved,
+  isF2lComplete,
+  isOllComplete,
+  recognizeOllCaseFromCube,
+  recognizePllCaseFromCube,
+} from "./last-layer-recognizer.ts";
 
 export type Stage = CfopPhase | "pll" | "incomplete";
 
@@ -21,6 +28,14 @@ export interface CfopResult {
   segments: StageSegment[];
   totalMoves: number;
   isSolved: boolean;
+  /** OLL 阶段起点（首个 F2L 严格完成且顶层未朝向的局面）命中的公式编号；未命中保持 undefined。 */
+  ollCaseId?: string;
+  /** PLL 阶段起点（首个 F2L 与顶层朝向均完成且未还原的局面）命中的公式编号；未命中保持 undefined。 */
+  pllCaseId?: string;
+  /** OLL case 首次出现的局面索引（第几步之后）；供 case 事件组装对齐停顿与步数。 */
+  ollCaseStartIndex?: number;
+  /** PLL case 首次出现的局面索引（第几步之后）；供 case 事件组装对齐停顿与步数。 */
+  pllCaseStartIndex?: number;
 }
 
 function calcDuration(timestamps: number[], startTime?: number, endTime?: number): number {
@@ -112,7 +127,44 @@ export function parseCfop(
   if (isSolved) {
     segments.push({ stage: "solved", moves: [], moveIndices: [], startIdx: moveCount, endIdx: moveCount, duration: 0, timestamps: [] });
   }
-  return { segments, totalMoves: moveCount, isSolved };
+  const { ollCaseId, ollCaseStartIndex, pllCaseId, pllCaseStartIndex } = matchCaseIds(states);
+  return { segments, totalMoves: moveCount, isSolved, ollCaseId, pllCaseId, ollCaseStartIndex, pllCaseStartIndex };
+}
+
+/**
+ * 实战 case 编号接线：与 CSTimer 形状掩码的分段边界无关，直接扫描每步后的局面。
+ * cstimer 掩码在轴旋转下会提前判定 F2L 完成，因此这里用严格的白十字 F2L 校验；
+ * 未命中的局面保持 undefined，保证绝不误报。起始索引只在真正命中编号时记录。
+ */
+function matchCaseIds(states: CubieCube[]): {
+  ollCaseId?: string;
+  ollCaseStartIndex?: number;
+  pllCaseId?: string;
+  pllCaseStartIndex?: number;
+} {
+  let ollCaseId: string | undefined;
+  let ollCaseStartIndex: number | undefined;
+  let pllCaseId: string | undefined;
+  let pllCaseStartIndex: number | undefined;
+  for (let index = 0; index < states.length; index++) {
+    const state = states[index];
+    if (ollCaseId === undefined && isF2lComplete(state) && !isOllComplete(state)) {
+      const match = recognizeOllCaseFromCube(state);
+      if (match) {
+        ollCaseId = match.formulaId;
+        ollCaseStartIndex = index;
+      }
+    }
+    if (pllCaseId === undefined && isF2lComplete(state) && isOllComplete(state) && !isCubeSolved(state)) {
+      const match = recognizePllCaseFromCube(state);
+      if (match) {
+        pllCaseId = match.formulaId;
+        pllCaseStartIndex = index;
+      }
+    }
+    if (ollCaseId !== undefined && pllCaseId !== undefined) break;
+  }
+  return { ollCaseId, ollCaseStartIndex, pllCaseId, pllCaseStartIndex };
 }
 
 export function formatCfop(result: CfopResult): string {

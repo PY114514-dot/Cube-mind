@@ -1,7 +1,8 @@
-/** 实战 F2L 槽位进度追踪：只判断槽位完成与回退，不推断公式 case。 */
+/** 实战 F2L 槽位进度追踪：判断槽位完成与回退，并用本地签名表识别公式 case 编号。 */
 
 import { CubieCube, parseMove } from "../utils/mathlib.ts";
 import { isCrossSolved } from "./cross-solver.ts";
+import { recognizeF2lCaseFromCube } from "./f2l-case-recognizer.ts";
 
 export interface F2lSlotReview {
   slot: "FR" | "FL" | "BL" | "BR";
@@ -9,11 +10,60 @@ export interface F2lSlotReview {
   completedAtMove?: number;
   duration?: number;
   moves?: number;
+  /** 从上一对完成后到本槽位首次完成的实际转动。 */
+  moveSequence?: string[];
   pauseCount: number;
   maxGap: number;
   breakCount: number;
   repairCount: number;
   completedWithCross: boolean;
+  /** 签名表精确命中的训练公式编号；未命中时保持 undefined。 */
+  caseId?: string;
+  /** 起始局面的可靠分类；精确 case 编号须由本地签名表命中后才会填充。 */
+  caseFamily?: F2lCaseFamily;
+  caseConfidence?: "exact" | "family" | "unknown";
+  caseReason?: string;
+}
+
+export type F2lCaseFamily = "Free Pairs" | "Disconnected Pairs" | "Corner In Slot" | "Edge In Slot"
+  | "Pieces In Slot" | "Trapped Corner" | "Trapped Edge" | "Both Pieces Trapped" | "unknown";
+
+const F2L_CASE_FAMILY_LABELS: Record<F2lCaseFamily, string> = {
+  "Free Pairs": "自由对",
+  "Disconnected Pairs": "分离对",
+  "Corner In Slot": "角上",
+  "Edge In Slot": "棱上",
+  "Pieces In Slot": "角棱上",
+  "Trapped Corner": "非标 · 角下",
+  "Trapped Edge": "非标 · 棱下",
+  "Both Pieces Trapped": "非标 · 角棱下",
+  unknown: "未知",
+};
+
+/** F2L family 的界面术语；内部英文枚举保留给签名表和 AI 证据使用。 */
+export function formatF2lCaseFamily(family: F2lCaseFamily): string {
+  return F2L_CASE_FAMILY_LABELS[family];
+}
+
+const WHITE_BOTTOM_MOVE_MAP: Record<string, string> = {
+  U: "D", D: "U", R: "L", L: "R", F: "F", B: "B",
+};
+
+const WHITE_BOTTOM_SLOT_MAP: Record<F2lSlotReview["slot"], F2lSlotReview["slot"]> = {
+  FR: "FL", FL: "FR", BL: "BR", BR: "BL",
+};
+
+/**
+ * 主舞台白面在 U 面时，设备面码会以白顶坐标输出；F2L 复盘改为竞速玩家习惯的白底记谱。
+ * 数学回放仍使用原始动作，只有展示层转换，不能影响 CFOP/CASE 识别。
+ */
+export function formatF2lMovesForWhiteBottom(moves: string[], targetFace: "U" | "D"): string[] {
+  if (targetFace === "D") return [...moves];
+  return moves.map((move) => `${WHITE_BOTTOM_MOVE_MAP[move[0]?.toUpperCase()] ?? move[0]}${move.slice(1)}`);
+}
+
+export function formatF2lSlotForWhiteBottom(slot: F2lSlotReview["slot"], targetFace: "U" | "D"): F2lSlotReview["slot"] {
+  return targetFace === "U" ? WHITE_BOTTOM_SLOT_MAP[slot] : slot;
 }
 
 export interface F2lSlotAnalysis {
@@ -71,6 +121,7 @@ export function analyzeF2lSlots(
   let lastCompletionMove = 0;
   let lastCompletionTime = solveStartTime;
   let completionOrder = 0;
+  let pairStartCube = cube;
 
   if (crossCompletedAtMove !== undefined) {
     markSlotsSolvedWithCross(cube, slots, definitions, slotSolvedState);
@@ -94,18 +145,35 @@ export function analyzeF2lSlots(
       lastCompletionTime = timestamp;
       markSlotsSolvedWithCross(cube, slots, definitions, slotSolvedState);
       completionOrder = slots.filter((slot) => slot.completedWithCross).length;
+      pairStartCube = cube;
       continue;
     }
-    updateSlots(cube, slots, definitions, completedMoves, timestamp, moveGaps, pauseThreshold, slotSolvedState, {
+    updateSlots(cube, slots, definitions, solveMoves, completedMoves, timestamp, moveGaps, pauseThreshold, slotSolvedState, {
       order: completionOrder,
       lastMove: lastCompletionMove,
       lastTime: lastCompletionTime,
     });
     const latestOrder = Math.max(...slots.map((slot) => slot.completionOrder ?? 0), completionOrder);
     if (latestOrder > completionOrder) {
+      for (const slot of slots.filter((item) => item.completionOrder === latestOrder)) {
+        const definition = definitions.find((item) => item.slot === slot.slot);
+        if (!definition) continue;
+        const classification = classifyF2lCaseFamily(pairStartCube, definition, definitions, targetFace ?? "D");
+        slot.caseFamily = classification.family;
+        slot.caseConfidence = classification.confidence;
+        slot.caseReason = classification.reason;
+        // 签名表精确命中时以公式编号为准，覆盖家族分类。
+        const caseMatch = recognizeF2lCaseFromCube(pairStartCube, definition.slot, targetFace ?? "D");
+        if (caseMatch) {
+          slot.caseId = caseMatch.formulaId;
+          slot.caseConfidence = "exact";
+          slot.caseReason = `本地签名表精确命中 ${caseMatch.formulaId}`;
+        }
+      }
       completionOrder = latestOrder;
       lastCompletionMove = completedMoves;
       lastCompletionTime = timestamp;
+      pairStartCube = cube;
     }
     // 四对均已首次完成后，后面的 OLL/PLL 不属于 F2L 复盘范围，不能计入槽位回退。
     if (areAllSlotsCompleted(slots)) break;
@@ -150,6 +218,7 @@ function updateSlots(
   cube: CubieCube,
   slots: F2lSlotReview[],
   definitions: SlotDefinition[],
+  solveMoves: string[],
   completedMoves: number,
   timestamp: number,
   moveGaps: number[],
@@ -181,7 +250,8 @@ function updateSlots(
     slot.completedAtMove = completedMoves;
     slot.duration = Math.max(0, timestamp - previous.lastTime);
     slot.moves = Math.max(0, completedMoves - previous.lastMove);
-    slot.pauseCount = gaps.filter((gap) => gap >= pauseThreshold).length;
+    slot.moveSequence = solveMoves.slice(previous.lastMove, completedMoves);
+    slot.pauseCount = gaps.filter((gap) => gap > pauseThreshold).length;
     slot.maxGap = gaps.length === 0 ? 0 : Math.max(...gaps);
     slotSolvedState[slot.slot] = true;
   }
@@ -190,22 +260,56 @@ function updateSlots(
 /** 将实战槽位追踪压缩为可直接放进 CFOP 结果的文本。 */
 export function formatF2lSlotAnalysis(analysis: F2lSlotAnalysis | null): string {
   if (!analysis) return "F2L 槽位：未检测到白面朝上或朝下的 Cross，本把不输出逐对判断。";
-  const lines = [`F2L 槽位复盘（${analysis.targetFace} 面 Cross，不按公式 case 归类）`];
-  for (const slot of analysis.slots) {
+  const crossColor = analysis.targetFace === "U" ? "白色" : "黄色";
+  const notation = analysis.targetFace === "U" ? "白底视角" : "原始面码";
+  const lines = [`F2L 槽位复盘（${notation} · ${crossColor} Cross，签名表命中时标注公式编号）`];
+  const orderedSlots = [...analysis.slots].sort((left, right) =>
+    (left.completionOrder ?? Number.MAX_SAFE_INTEGER) - (right.completionOrder ?? Number.MAX_SAFE_INTEGER));
+  for (const slot of orderedSlots) {
     if (slot.completedWithCross) {
-      lines.push(`${slot.slot}: 与 Cross 同时完成${slot.breakCount > 0 ? ` · 回退 ${slot.breakCount} 次` : ""}`);
+      lines.push(`${formatF2lSlotForWhiteBottom(slot.slot, analysis.targetFace)}: 与 Cross 同时完成`);
       continue;
     }
     if (slot.completedAtMove === undefined) {
-      lines.push(`${slot.slot}: 未完成${slot.breakCount > 0 ? ` · 曾回退 ${slot.breakCount} 次` : ""}`);
+      lines.push(`${formatF2lSlotForWhiteBottom(slot.slot, analysis.targetFace)}: 未完成`);
       continue;
     }
     const pauses = slot.pauseCount > 0 ? ` · 长停顿 ${slot.pauseCount} 次` : "";
-    const repairs = slot.repairCount > 0 ? ` · 修复 ${slot.repairCount} 次` : "";
-    const breaks = slot.breakCount > 0 ? ` · 回退 ${slot.breakCount} 次` : "";
-    lines.push(`${slot.slot}: 第 ${slot.completionOrder} 对 · ${slot.moves} 步 · ${((slot.duration ?? 0) / 1000).toFixed(2)}s${pauses}${repairs}${breaks}`);
+    const pairLabel = `F2L-${slot.completionOrder ?? "?"}`;
+    const caseLabel = slot.caseId
+      ? ` · ${slot.caseId}`
+      : slot.caseFamily && slot.caseFamily !== "unknown" ? ` · ${formatF2lCaseFamily(slot.caseFamily)}` : "";
+    const displaySlot = formatF2lSlotForWhiteBottom(slot.slot, analysis.targetFace);
+    const displayMoves = slot.moveSequence ? formatF2lMovesForWhiteBottom(slot.moveSequence, analysis.targetFace) : [];
+    lines.push(`${pairLabel} (${displaySlot})${caseLabel} · ${((slot.duration ?? 0) / 1000).toFixed(2)}s · ${slot.moves ?? 0}步${pauses}`);
+    lines.push(`  转动: ${displayMoves.join(" ") || "—"}`);
   }
   return lines.join("\n");
+}
+
+function classifyF2lCaseFamily(
+  cube: CubieCube,
+  target: SlotDefinition,
+  definitions: SlotDefinition[],
+  targetFace: "U" | "D",
+): { family: F2lCaseFamily; confidence: "family" | "unknown"; reason: string } {
+  const cornerPosition = cube.ca.findIndex((value) => (value & 7) === target.corner);
+  const edgePosition = cube.ea.findIndex((value) => (value >> 1) === target.edge);
+  const otherCorners = definitions.filter((item) => item.slot !== target.slot).map((item) => item.corner);
+  const otherEdges = definitions.filter((item) => item.slot !== target.slot).map((item) => item.edge);
+  const cornerTrapped = otherCorners.includes(cornerPosition);
+  const edgeTrapped = otherEdges.includes(edgePosition);
+  if (cornerTrapped && edgeTrapped) return { family: "Both Pieces Trapped", confidence: "family", reason: "目标角块和棱块均位于其它 F2L 槽位" };
+  if (cornerTrapped) return { family: "Trapped Corner", confidence: "family", reason: "目标角块位于其它 F2L 槽位" };
+  if (edgeTrapped) return { family: "Trapped Edge", confidence: "family", reason: "目标棱块位于其它 F2L 槽位" };
+  if (cornerPosition === target.corner && edgePosition === target.edge) return { family: "Pieces In Slot", confidence: "family", reason: "目标角棱均在目标槽位" };
+  if (cornerPosition === target.corner) return { family: "Corner In Slot", confidence: "family", reason: "目标角块已在目标槽位" };
+  if (edgePosition === target.edge) return { family: "Edge In Slot", confidence: "family", reason: "目标棱块已在目标槽位" };
+  const lastLayerPositions = targetFace === "U" ? [4, 5, 6, 7] : [0, 1, 2, 3];
+  if (lastLayerPositions.includes(cornerPosition) && lastLayerPositions.includes(edgePosition)) {
+    return { family: "Disconnected Pairs", confidence: "family", reason: "目标角块和棱块均在最后一层，尚未成对" };
+  }
+  return { family: "unknown", confidence: "unknown", reason: "局部状态不满足可靠的标准或被困分类" };
 }
 
 function findCrossTarget(cube: CubieCube): "U" | "D" | null {

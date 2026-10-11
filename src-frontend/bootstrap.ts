@@ -1,3 +1,8 @@
+import "./styles/base.css";
+import "./styles/cube.css";
+import "./styles/panels.css";
+import "./styles/practice.css";
+
 /** 前端入口错误边界，避免模块初始化失败时页面只剩静态骨架。 */
 void import("./main.ts").catch((error: unknown) => {
   console.error("[bootstrap] 前端初始化失败:", error);

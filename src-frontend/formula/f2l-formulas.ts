@@ -77,7 +77,7 @@ export const F2L_FORMULAS: Formula[] = F2L_SEEDS.map((seed) => ({
   execution: `按 ${seed.moves} 执行。先保持目标槽位不被误破坏，再完成配对和插入；练习时重点控制 U 层调整和最后一次插入节奏。`,
   difficulty: seed.difficulty,
   tags: seed.tags,
-  source: "ALGDB / SpeedCubeDB CFOP F2L 41 case",
+  source: "ALGDB · SpeedCubeDB CFOP F2L 41 case",
 }));
 
 /** 按 tag 筛选 F2L 公式 */

@@ -2,7 +2,7 @@ import type { AnalysisInput } from "../agent/types.ts";
 
 const CSV_COLUMNS = [
   "completedAt", "totalDurationMs", "crossDurationMs", "f2lDurationMs", "ollDurationMs", "pllDurationMs",
-  "crossMoves", "f2lMoves", "ollMoves", "pllMoves", "tps", "penalty", "qualityStatus", "scramble", "moves",
+  "crossMoves", "f2lMoves", "ollMoves", "pllMoves", "tps", "penalty", "trustState", "physicalState", "qualityStatus", "scramble", "moves",
 ] as const;
 
 function escapeCsv(value: string | number | undefined): string {
@@ -30,6 +30,8 @@ export function formatHistoryCsv(records: AnalysisInput[]): string {
     record.pllMoves,
     record.tps,
     record.penalty,
+    record.trustState,
+    record.physicalState,
     record.qualityStatus,
     record.scramble,
     record.moves?.join(" "),

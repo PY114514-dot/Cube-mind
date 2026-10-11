@@ -80,16 +80,16 @@ export function getF2LFocusFaceletIndexes(facelets: string[], targetSlot: F2LTar
 }
 
 /**
- * F2L case 图的中性贴纸集合：中心保留面色，黄色层和非目标小块都使用
- * 深灰实体色。这里不使用 blur/filter，缩放或拖动时不会出现虚化边缘。
+ * F2L case 图的中性贴纸集合：只隐去黄色层（最后一层）。含黄色贴纸的小方块
+ * 整体置灰；白色十字、已复位白角与待插入的对都保留原色——白色层是 F2L
+ * 阶段的上下文，跟着一起消失会让白面看起来整面缺失。中心保留面色。
  */
-export function getF2LNeutralFaceletIndexes(facelets: string[], focusFacelets: Set<number>): Set<number> {
+export function getF2LNeutralFaceletIndexes(facelets: string[]): Set<number> {
   const neutral = new Set<number>();
   for (const group of getCubieFaceletGroups()) {
     if (group.length === 1) continue;
-    const isFocus = group.some((index) => focusFacelets.has(index));
     const hasYellow = group.some((index) => facelets[index] === "U");
-    if (!isFocus || hasYellow) group.forEach((index) => neutral.add(index));
+    if (hasYellow) group.forEach((index) => neutral.add(index));
   }
   return neutral;
 }

@@ -10,6 +10,7 @@ export interface FormulaVariant {
   name: string;
   /** 璇ヨВ娉曠殑杞姩搴忓垪 */
   moves: string[];
+  setupMoves?: string[];
   /** 棰濆鎻愮ず锛屼緥濡傞€傚悎鐨勮捣鎵嬭搴?*/
   note?: string;
 }

@@ -28,6 +28,11 @@ const STAGE_DRILL_TEMPLATES: Record<string, { drills: string[]; target: string }
   },
 };
 
+/** 只有有标准公式库的阶段才显示一键专项入口。 */
+export function isFormulaTrainingStage(stage: string | undefined): stage is "F2L" | "OLL" | "PLL" {
+  return stage === "F2L" || stage === "OLL" || stage === "PLL";
+}
+
 /** 从最近 N 次分析结果中聚合问题 */
 export function aggregateIssues(results: AnalysisResult[]): IssueAggregation {
   const stageCounts: Record<string, number> = {};

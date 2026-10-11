@@ -1,13 +1,18 @@
 /**
  * 历史成绩面板控制器
  * 管理 AO 统计、最近记录、设备统计、趋势图、复盘候选、分组和导出。
+ * 视图构建（复盘洞察/设备统计/趋势图 SVG）抽到 history-view-helpers.ts。
  */
 
 import type { AnalysisInput } from "../agent/types.ts";
-import { formatWcaAverage, formatWcaSolveTime, getWcaScore } from "../core/wca-average.ts";
-import { isScoreEligible } from "../core/solve-validation.ts";
+import { formatWcaAverage, getWcaScore } from "../core/wca-average.ts";
+import { resolvePersistedSolveTrust } from "../core/solve-validation.ts";
 import { formatHistoryCsv, formatHistoryJson } from "../core/history-export.ts";
 import { HistoryDetailController } from "../ui/history-detail-controller.ts";
+import {
+  escapeHtml, formatSolveTimeLocal, getReviewInsight, isPracticeSolve,
+  renderDeviceHistoryHtml, renderPerformanceChartSvg,
+} from "./history-view-helpers.ts";
 
 // ====== 类型与常量 ======
 
@@ -69,7 +74,6 @@ export interface HistoryControllerCallbacks {
   onDelete: (index: number) => void;
   /** 分组删除修改了记录内容后通知外层持久化 */
   onSave: () => void;
-  renderBlockPracticeStats: () => void;
 }
 
 // ====== 控制器 ======
@@ -180,7 +184,7 @@ export class HistoryController {
     this.els.historyToday.textContent = `${todayCount} 次`;
     const scoredSolves = visibleHistory
       .map(({ solve }) => solve)
-      .filter((solve) => isScoreEligible(solve.physicalState, solve.qualityStatus));
+      .filter((solve) => resolvePersistedSolveTrust(solve).scoreEligible);
     const averages: Array<[HTMLElement, number]> = [
       [this.els.historyAo5, 5], [this.els.historyAo12, 12], [this.els.historyAo25, 25],
       [this.els.historyAo50, 50], [this.els.historyAo100, 100],
@@ -210,7 +214,6 @@ export class HistoryController {
       });
     });
     this.renderDeviceHistory(visibleHistory.map(({ solve }) => solve));
-    this.cb.renderBlockPracticeStats();
     this.renderReviewCandidates();
     this.renderPerformanceChart(scoredSolves.map((solve) => getWcaScore({ duration: solve.totalDuration, penalty: solve.penalty })).filter(Number.isFinite));
   }
@@ -285,39 +288,14 @@ export class HistoryController {
   }
 
   private renderDeviceHistory(solves: AnalysisInput[]): void {
-    const groups = new Map<string, AnalysisInput[]>();
-    for (const solve of solves) {
-      if (!isScoreEligible(solve.physicalState, solve.qualityStatus)) continue;
-      const key = solve.deviceId?.trim() || solve.deviceName?.trim() || "未标识魔方";
-      const records = groups.get(key) ?? [];
-      records.push(solve);
-      groups.set(key, records);
-    }
-    const stats = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
-    this.els.deviceHistory.innerHTML = stats.length === 0
-      ? "暂无设备成绩"
-      : stats.map(([, records]) => {
-        const name = records[0].deviceName?.trim() || "未标识魔方";
-        const scores = records.map((solve) => getWcaScore({ duration: solve.totalDuration, penalty: solve.penalty })).filter(Number.isFinite);
-        const average = scores.reduce((sum, value) => sum + value, 0) / scores.length;
-        const best = Math.min(...scores);
-        const latest = Math.max(...records.map((record) => record.completedAt ?? 0));
-        const latestLabel = latest > 0 ? new Date(latest).toLocaleDateString() : "—";
-        return `<div class="device-history-entry">
-          <strong>${escapeHtml(name)}</strong>
-          <span>${records.length} 把</span>
-          <span>平均 ${scores.length ? `${(average / 1000).toFixed(2)}s` : "DNF"}</span>
-          <span>最佳 ${scores.length ? `${(best / 1000).toFixed(2)}s` : "DNF"}</span>
-          <em>最近 ${latestLabel}</em>
-        </div>`;
-      }).join("");
+    this.els.deviceHistory.innerHTML = renderDeviceHistoryHtml(solves);
   }
 
   private renderReviewCandidates(): void {
     const records = this.cb.getRecords();
     const eligible = records
       .map((solve, index) => ({ solve, index }))
-      .filter(({ solve }) => isScoreEligible(solve.physicalState, solve.qualityStatus) && !isPracticeSolve(solve));
+      .filter(({ solve }) => resolvePersistedSolveTrust(solve).scoreEligible && !isPracticeSolve(solve));
     const recent = eligible.slice(-100);
     const scoreOf = (solve: AnalysisInput): number => getWcaScore({ duration: solve.totalDuration, penalty: solve.penalty });
     const slowest = [...recent].sort((a, b) => scoreOf(b.solve) - scoreOf(a.solve)).slice(0, 10);
@@ -331,14 +309,18 @@ export class HistoryController {
     const candidates = [...selected.values()].sort((a, b) => scoreOf(b.solve) - scoreOf(a.solve));
     this.els.reviewList.innerHTML = candidates.length === 0
       ? "当前没有符合条件的成绩。"
-      : candidates.map(({ solve, index }) => {
+      : candidates.map(({ solve, index }, rankIndex) => {
         const insight = getReviewInsight(solve);
         return `
-        <button class="review-entry" data-review-index="${index}">
-          <span>#${index + 1}</span>
-          <strong>${formatSolveTimeLocal(solve)}${solve.penalty === "dnf" ? "" : "s"}</strong>
-          <em>${(solve.tps ?? 0).toFixed(2)} TPS</em>
-          <small><b>${insight.bottleneck}</b>：${insight.reason}<br>${insight.advice}</small>
+        <button class="review-entry${rankIndex < 3 ? " review-entry-top" : ""}" data-review-index="${index}">
+          <span class="review-rank">#${index + 1}</span>
+          <span class="review-time">${formatSolveTimeLocal(solve)}<i>${solve.penalty === "dnf" ? "" : "s"}</i></span>
+          <span class="review-tps">${(solve.tps ?? 0).toFixed(2)} TPS</span>
+          <span class="review-insight">
+            <b class="review-bottleneck">${insight.bottleneck}</b>
+            <span class="review-reason">${insight.reason}</span>
+            <span class="review-advice">${insight.advice}</span>
+          </span>
         </button>
       `;
       }).join("");
@@ -354,39 +336,10 @@ export class HistoryController {
   }
 
   private renderPerformanceChart(durations: number[]): void {
-    if (durations.length === 0) {
-      this.els.performanceMean.textContent = "—";
-      this.els.performanceStd.textContent = "—";
-      this.els.performanceChart.innerHTML = '<text x="300" y="92" text-anchor="middle" fill="var(--warm-gray)" font-size="14">完成一把后显示成绩趋势</text>';
-      return;
-    }
-
-    const values = durations.slice(-30).map((duration) => duration / 1000);
-    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-    const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
-    this.els.performanceMean.textContent = `${mean.toFixed(2)}s`;
-    this.els.performanceStd.textContent = `${Math.sqrt(variance).toFixed(2)}s`;
-
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = Math.max(0.5, max - min);
-    const points = values.map((value, index) => {
-      const x = values.length === 1 ? 300 : 36 + (index * 528) / (values.length - 1);
-      const y = 150 - ((value - min) / range) * 112;
-      return { x, y, value };
-    });
-    const line = points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
-    const dots = points.map((point) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" fill="var(--gold)"><title>${point.value.toFixed(2)}s</title></circle>`).join("");
-    const meanY = 150 - ((mean - min) / range) * 112;
-    this.els.performanceChart.innerHTML = `
-      <line x1="36" y1="150" x2="564" y2="150" stroke="var(--rule)" />
-      <line x1="36" y1="38" x2="36" y2="150" stroke="var(--rule)" />
-      <line x1="36" y1="${meanY.toFixed(1)}" x2="564" y2="${meanY.toFixed(1)}" stroke="var(--gold-light)" stroke-dasharray="5 5" />
-      <polyline points="${line}" fill="none" stroke="var(--gold)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-      ${dots}
-      <text x="8" y="42" fill="var(--warm-gray)" font-size="11">${max.toFixed(2)}s</text>
-      <text x="8" y="152" fill="var(--warm-gray)" font-size="11">${min.toFixed(2)}s</text>
-    `;
+    const { mean, std, svg } = renderPerformanceChartSvg(durations);
+    this.els.performanceMean.textContent = mean;
+    this.els.performanceStd.textContent = std;
+    this.els.performanceChart.innerHTML = svg;
   }
 
   private formatAverage(solves: AnalysisInput[], size: number): string {
@@ -423,68 +376,4 @@ export class HistoryController {
     anchor.click();
     URL.revokeObjectURL(url);
   }
-}
-
-// ====== 模块级辅助 ======
-
-function isPracticeSolve(solve: AnalysisInput): boolean {
-  return Boolean(solve.practiceKind || solve.practiceMode || solve.practiceFormulaId);
-}
-
-function formatSolveTimeLocal(solve: AnalysisInput): string {
-  return formatWcaSolveTime({ duration: solve.totalDuration, penalty: solve.penalty });
-}
-
-function getReviewInsight(solve: AnalysisInput): { bottleneck: string; reason: string; advice: string } {
-  const stages: Array<[string, number]> = [
-    ["Cross", solve.crossDuration], ["F2L", solve.f2lDuration],
-    ["OLL", solve.ollDuration], ["PLL", solve.pllDuration],
-  ];
-  const [bottleneck, duration] = stages.reduce((slowest, current) => current[1] > slowest[1] ? current : slowest);
-  const longestPause = solve.stepReview?.pauses.reduce(
-    (longest, pause) => pause.gap > longest.gap ? pause : longest,
-    { gap: 0, move: "", stage: "" },
-  );
-  const slotInsight = getF2lSlotInsight(solve);
-  if (slotInsight) return slotInsight;
-  if (longestPause && longestPause.gap >= 1000) {
-    return {
-      bottleneck,
-      reason: `${longestPause.stage || bottleneck} 在 ${longestPause.move || "动作间"} 停顿 ${(longestPause.gap / 1000).toFixed(2)}s`,
-      advice: `先练习 ${longestPause.stage || bottleneck} 的连续识别，目标是把停顿压到 1 秒以内。`,
-    };
-  }
-  return {
-    bottleneck,
-    reason: `${bottleneck} 用时 ${(duration / 1000).toFixed(2)}s，占本次成绩主要比例`,
-    advice: `建立 ${bottleneck} 专项训练，优先减少观察和启动前停顿。`,
-  };
-}
-
-function getF2lSlotInsight(solve: AnalysisInput): { bottleneck: string; reason: string; advice: string } | null {
-  const completedSlots = (solve.f2lSlots ?? []).filter((slot) => !slot.completedWithCross && slot.duration !== undefined);
-  if (completedSlots.length === 0) return null;
-  const target = completedSlots.reduce((worst, slot) => {
-    const worstScore = (worst.duration ?? 0) + worst.maxGap * 1.5 + worst.repairCount * 1000 + worst.breakCount * 1000;
-    const score = (slot.duration ?? 0) + slot.maxGap * 1.5 + slot.repairCount * 1000 + slot.breakCount * 1000;
-    return score > worstScore ? slot : worst;
-  });
-  const slotDuration = ((target.duration ?? 0) / 1000).toFixed(2);
-  const pauseText = target.maxGap >= 800 ? `，最长停顿 ${(target.maxGap / 1000).toFixed(2)}s` : "";
-  const recoveryText = target.repairCount > 0 || target.breakCount > 0
-    ? `，修复 ${target.repairCount} 次、回退 ${target.breakCount} 次`
-    : "";
-  return {
-    bottleneck: `F2L · ${target.slot}`,
-    reason: `第 ${target.completionOrder ?? "—"} 对 ${target.slot} 用时 ${slotDuration}s、${target.moves ?? 0} 步${pauseText}${recoveryText}`,
-    advice: target.maxGap >= 800
-      ? `专项练 ${target.slot} 槽位的连续观察：本对插入前先锁定下一对，优先把这次 ${(target.maxGap / 1000).toFixed(2)}s 停顿压低。`
-      : `专项练 ${target.slot} 槽位：保持本对 ${target.moves ?? 0} 步的执行节奏，减少重做和回退。`,
-  };
-}
-
-function escapeHtml(s: string): string {
-  const div = document.createElement("div");
-  div.textContent = s;
-  return div.innerHTML;
 }

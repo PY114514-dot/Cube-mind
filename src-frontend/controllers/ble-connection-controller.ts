@@ -10,7 +10,7 @@
  *   - MAC 缺失检测：加密固件连接后 5 秒无 move 数据 → 提示用户输入 MAC
  */
 
-import type { CubeDriver, CubeMove, CubeQuaternion } from "../ble/cube-driver.ts";
+import type { CubeDriver, CubeMove, CubeMoveStreamGap, CubeQuaternion } from "../ble/cube-driver.ts";
 
 /** 每个品牌对应的 DOM 元素槽位 */
 export interface DriverSlotElements {
@@ -36,6 +36,8 @@ export interface BleControllerElements {
 export interface BleControllerCallbacks {
   /** 统一 move 回调（计时、scramble 追踪等） */
   onMove: (move: CubeMove) => void;
+  /** 设备确认无法补齐的动作缺口。 */
+  onMoveStreamGap: (gap: CubeMoveStreamGap) => void;
   /** 断连时调用（用于中途计时保护） */
   onDisconnect: (brand: string) => void;
   /** 连接成功后调用（用于 confirmCubeReset） */
@@ -52,6 +54,14 @@ function formatError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** 结束时通知队列可能仍在处理最后一步；实体局面空回读后短暂重试一次。 */
+export async function readFaceletsWithRetry(read: () => Promise<string | null>, wait: () => Promise<void>): Promise<string | null> {
+  const first = await read();
+  if (first !== null) return first;
+  await wait();
+  return read();
+}
+
 const RECONNECT_MAX_ATTEMPTS = 3;
 const RECONNECT_BASE_DELAY_MS = 1000;
 const MAC_DETECT_TIMEOUT_MS = 5000;
@@ -66,6 +76,9 @@ export class BleConnectionController {
   private reconnectAttempts = 0;
   private reconnectTimer: number | null = null;
   private activeDriver: CubeDriver | null = null;
+
+  // 连接状态（onConnect/onDisconnect 回调驱动，供未连接引导卡片等判断）
+  private connected = false;
 
   // MAC 缺失检测
   private macDetectTimer: number | null = null;
@@ -92,7 +105,14 @@ export class BleConnectionController {
       for (const driver of this.drivers) {
         await driver.disconnect();
       }
+      // 主动断开可能不触发各驱动的 onDisconnect 回调，这里显式同步状态。
+      this.connected = false;
     };
+  }
+
+  /** 当前是否有设备处于已连接状态（供未连接引导卡片判断初始显隐）。 */
+  isConnected(): boolean {
+    return this.connected;
   }
 
   /** 获取当前连接设备的 MAC（用于分析输入 deviceId） */
@@ -106,7 +126,16 @@ export class BleConnectionController {
 
   /** 由当前驱动读取实体局面；不支持状态回读的设备返回 null。 */
   async requestCurrentFacelets(): Promise<string | null> {
-    return this.activeDriver?.requestFacelets ? this.activeDriver.requestFacelets() : null;
+    if (!this.activeDriver?.requestFacelets) return null;
+    return readFaceletsWithRetry(
+      () => this.activeDriver?.requestFacelets?.() ?? Promise.resolve(null),
+      () => new Promise<void>((resolve) => window.setTimeout(resolve, 160)),
+    );
+  }
+
+  /** 当前协议是否允许在无 54 位实体回读时保留连续动作流的计时成绩。 */
+  allowsUnverifiedMoveScore(): boolean {
+    return this.activeDriver?.allowsUnverifiedMoveScore?.() ?? false;
   }
 
   startPacketRecording(): boolean {
@@ -123,6 +152,10 @@ export class BleConnectionController {
 
   exportPacketRecording(): string | null {
     return this.activeDriver?.exportPacketRecording?.() ?? null;
+  }
+
+  exportReplayFixture(): string | null {
+    return this.activeDriver?.exportReplayFixture?.() ?? null;
   }
 
   // ====== 内部方法 ======
@@ -176,6 +209,9 @@ export class BleConnectionController {
       this.cb.onMove(move);
     });
 
+    driver.onMoveStreamGap?.((gap) => this.cb.onMoveStreamGap(gap));
+    driver.onError?.((message) => this.cb.log(`${driver.brand}：${message}`, "error"));
+
     driver.onGyro((quaternion: CubeQuaternion) => {
       this.cb.onGyroOrientation(quaternion);
       if (!hasReceivedGyro) {
@@ -185,6 +221,7 @@ export class BleConnectionController {
     });
 
     driver.onConnect(() => {
+      this.connected = true;
       this.setStatus("connected", driver.getName() || driver.brand);
       this.cb.onResetOrientation();
       this.cb.log(`${driver.brand} 已连接: ${driver.getName()}`);
@@ -198,6 +235,7 @@ export class BleConnectionController {
     });
 
     driver.onDisconnect(() => {
+      this.connected = false;
       this.cancelMacDetect();
       this.cb.onDisconnect(driver.brand);
       this.cb.onResetOrientation();

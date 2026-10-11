@@ -4,802 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CubeMind - AI 魔方解法分析</title>
-  <style>
-    /* ===== 设计令牌 ===== */
-    :root {
-      color-scheme: light;
-      --ivory: #FAFAF8;
-      --ink: #1A1A1A;
-      --muted-surface: #F5F3F0;
-      --warm-gray: #6B6B6B;
-      --gold: #B8860B;
-      --gold-light: #D4A84B;
-      --gold-soft: #F3E7C3;
-      --gold-soft-hover: #EAD69D;
-      --rule: #E8E4DF;
-      --card: #FFFFFF;
-      --danger: #dc2626;
-      --success: #16a34a;
-      --warning: #d97706;
-      --cube-structure-light: #3b3b3b;
-      --cube-structure-mid: #151515;
-      --cube-structure-dark: #030303;
-      --cube-sticker-radius: 13px;
-      --serif: "Playfair Display", Georgia, "Times New Roman", serif;
-      --sans: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
-      --mono: "IBM Plex Mono", Consolas, monospace;
-      /* CFOP 阶段颜色 */
-      --cross-color: #3b82f6;
-      --f2l-color: #8b5cf6;
-      --oll-color: #f59e0b;
-      --pll-color: #10b981;
-    }
-    body[data-ui-theme="ocean"] { --ivory: #edf6ff; --card: #ffffff; --ink: #12304a; --warm-gray: #47647a; --rule: #c9dfef; --gold: #1267a8; --gold-light: #2d8ac8; --gold-soft: #dceffd; --gold-soft-hover: #c4e3fa; --muted-surface: #f1f8fe; }
-    body[data-ui-theme="forest"] { --ivory: #f1f8f0; --card: #ffffff; --ink: #183b2a; --warm-gray: #527264; --rule: #cee1d2; --gold: #2f7d4a; --gold-light: #4c9a65; --gold-soft: #dff0e2; --gold-soft-hover: #cae6d0; --muted-surface: #f5faf4; }
-    body[data-ui-theme="violet"] { --ivory: #f7f3ff; --card: #ffffff; --ink: #30224b; --warm-gray: #6d5d84; --rule: #ded4ef; --gold: #7250a8; --gold-light: #8d6ac5; --gold-soft: #ece3fa; --gold-soft-hover: #dfd0f3; --muted-surface: #faf7fe; }
-
-    /* ===== 基础重置 ===== */
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { background: var(--ivory); color: var(--ink); }
-    body {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px 24px 60px;
-      font-family: var(--sans);
-      line-height: 1.6;
-      min-height: 100vh;
-      background-image: radial-gradient(rgba(184,134,11,.03) .7px, transparent .7px);
-      background-size: 9px 9px;
-    }
-    h1, h2, h3 { font-family: var(--serif); font-weight: 400; color: var(--ink); }
-    button { font-family: var(--sans); cursor: pointer; }
-    input, select { font-family: var(--sans); }
-
-    /* ===== 跳转链接 ===== */
-    .skip-link { position: absolute; left: -9999px; top: 12px; z-index: 1000; padding: 10px 14px; background: var(--ink); color: var(--ivory); font-family: var(--mono); font-size: 12px; border-radius: 4px; }
-    .skip-link:focus { left: 12px; }
-
-    /* ===== 头部 ===== */
-    .app-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding-bottom: 16px;
-      margin-bottom: 20px;
-      border-bottom: 1px solid var(--rule);
-    }
-    .app-header h1 { font-size: 28px; letter-spacing: -.02em; line-height: 1.1; }
-    .badge { display: inline-block; padding: 2px 8px; border: 1px solid rgba(184,134,11,.35); border-radius: 4px; background: rgba(184,134,11,.08); color: var(--gold); font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; vertical-align: middle; margin-left: 8px; }
-    .subtitle { color: var(--warm-gray); font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; margin-top: 4px; }
-    .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-    /* ===== 按钮 ===== */
-    button {
-      min-height: 38px;
-      padding: 8px 16px;
-      border: 1px solid var(--ink);
-      border-radius: 6px;
-      background: var(--gold);
-      color: #fff;
-      font-size: 13px;
-      font-weight: 600;
-      transition: background-color .15s, border-color .15s, color .15s, transform .1s;
-    }
-    button:hover:not(:disabled) { background: var(--gold-light); border-color: var(--gold); transform: translateY(-1px); }
-    button:disabled { background: #e5e5e5; color: #737373; border-color: #a3a3a3; cursor: not-allowed; }
-    button.secondary, button.ghost { background: transparent; color: var(--ink); border-color: var(--rule); }
-    button.secondary:hover:not(:disabled), button.ghost:hover:not(:disabled) { background: var(--muted-surface); color: var(--gold); border-color: var(--gold); transform: none; }
-    button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-    button.practice-btn { background: var(--gold); color: #fff; width: 100%; padding: 12px; font-size: 15px; }
-    button.practice-btn:hover { background: var(--gold-light); }
-    button:focus-visible, input:focus-visible, summary:focus-visible, select:focus-visible { outline: 3px solid rgba(184,134,11,.5); outline-offset: 2px; }
-
-    /* ===== 连接胶囊 ===== */
-    .connection-capsule { position: relative; }
-    .connection-capsule summary {
-      list-style: none;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 14px;
-      border: 1px solid var(--rule);
-      border-radius: 20px;
-      background: var(--card);
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--warm-gray);
-      transition: border-color .15s;
-    }
-    .connection-capsule summary::-webkit-details-marker { display: none; }
-    .connection-capsule summary:hover { border-color: var(--gold); }
-    .capsule-dot { width: 8px; height: 8px; border-radius: 50%; background: #a3a3a3; flex-shrink: 0; transition: background .3s; }
-    .capsule-dot.connected { background: var(--success); }
-    .capsule-dot.connecting { background: var(--warning); animation: pulse-dot 1s infinite; }
-    @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-    .capsule-device { color: var(--warm-gray); font-size: 12px; font-weight: 400; }
-    .capsule-panel {
-      position: absolute;
-      z-index: 50;
-      top: calc(100% + 8px);
-      right: 0;
-      width: min(360px, calc(100vw - 32px));
-      display: grid;
-      gap: 10px;
-      padding: 16px;
-      border: 1px solid var(--rule);
-      border-radius: 10px;
-      background: var(--card);
-      box-shadow: 0 16px 40px rgba(0,0,0,.12);
-    }
-    .capsule-panel .controls { display: flex; flex-wrap: wrap; gap: 6px; }
-    .mac-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
-    .mac-row input { min-width: 0; margin: 0; text-transform: uppercase; }
-    .mac-row button { margin: 0; }
-    .connection-panel[data-active-brand="gan"] .moyu-mac-row,
-    .connection-panel[data-active-brand="moyu"] .gan-mac-row { display: none; }
-    .status { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 700; }
-    .status.disconnected { background: #f3f4f6; color: #6b7280; }
-    .status.connecting { background: #fef3c7; color: #92400e; }
-    .status.connected { background: #dcfce7; color: #166534; }
-
-    /* ===== 训练舞台 ===== */
-    .training-stage {
-      display: grid;
-      grid-template-columns: 1fr minmax(300px, 420px);
-      gap: 20px;
-      align-items: start;
-      min-height: calc(100vh - 200px);
-    }
-    .stage-primary { display: flex; flex-direction: column; gap: 16px; }
-
-    /* 打乱区 */
-    .scramble-section { padding: 16px 0; border-bottom: 1px solid var(--rule); }
-    .scramble-section h2 { font-size: 14px; font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--warm-gray); margin-bottom: 10px; }
-    .scramble {
-      font-family: var(--mono);
-      font-size: 18px;
-      line-height: 1.7;
-      padding: 16px;
-      background: var(--card);
-      border: 1px solid var(--rule);
-      border-radius: 8px;
-      word-break: break-all;
-      min-height: 56px;
-    }
-    .scramble-move { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; margin: 2px; padding: 0 7px; background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 5px; font-weight: 700; font-size: 15px; color: var(--ink); }
-    .scramble-move.next { background: var(--gold); color: #fff; border-color: var(--gold); }
-    .scramble-move.completed { background: var(--ink); color: var(--ivory); border-color: var(--ink); }
-    .cross-target-fixed { font-size: 11px; color: var(--warm-gray); font-family: var(--mono); }
-    .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
-    .cross-solution, .xcross-solution { margin-top: 10px; padding: 12px; background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 6px; font-family: var(--mono); font-size: 13px; line-height: 1.6; }
-
-    /* 计时器区 */
-    .timer-section { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 0; }
-    .timer-section h2 { font-size: 14px; font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--warm-gray); margin-bottom: 8px; align-self: flex-start; }
-    .inspection-status { font-size: 14px; color: var(--warning); font-weight: 700; margin-bottom: 8px; }
-    .timer-display {
-      font-family: var(--mono);
-      font-size: clamp(4rem, 11vw, 8.5rem);
-      font-weight: 400;
-      letter-spacing: -.06em;
-      line-height: 1;
-      color: var(--ink);
-      text-align: center;
-      padding: 24px 16px;
-      width: 100%;
-    }
-    .timer-hint { font-size: 12px; color: var(--warm-gray); margin-top: 8px; text-align: center; }
-    .timer-manual { margin-top: 12px; display: flex; gap: 6px; }
-    .timer-manual button { min-height: 32px; padding: 5px 12px; font-size: 12px; }
-
-    /* 快捷统计 */
-    .session-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-top: 12px; border-top: 1px solid var(--rule); }
-    .quick-stat { padding: 10px 12px; background: var(--card); border: 1px solid var(--rule); border-radius: 6px; }
-    .quick-stat span { display: block; font-size: 11px; color: var(--warm-gray); font-family: var(--mono); }
-    .quick-stat strong { display: block; font-size: 18px; color: var(--ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
-
-    /* 3D 魔方区 */
-    .stage-cube { position: sticky; top: 20px; }
-    .cube-visualizer {
-      min-height: 420px;
-      display: grid;
-      place-items: center;
-      background: radial-gradient(circle at 50% 38%, #fff 0%, #f8fafc 48%, #e2e8f0 100%);
-      border: 1px solid var(--rule);
-      border-radius: 12px;
-      overflow: hidden;
-      perspective: 920px;
-      cursor: grab;
-      touch-action: none;
-    }
-    .cube-visualizer.is-dragging { cursor: grabbing; }
-    .cube-scene { position: relative; width: 236px; height: 236px; display: grid; place-items: center; transform: translateY(6px); transform-style: preserve-3d; }
-    .cube-scene::after { content: ""; position: absolute; width: 148px; height: 28px; left: 44px; bottom: 16px; border-radius: 50%; background: rgba(15,23,42,.2); filter: blur(12px); transform: rotateX(68deg); pointer-events: none; }
-    .cube3d { width: 164px; height: 164px; position: relative; transform-style: preserve-3d; transition: transform .2s ease; will-change: transform; }
-    .cube-turn-layer { will-change: transform; }
-    .cube3d.is-gyro-following { transition: none; }
-    /* 内核只负责承接真实转层时可见的内部空间；外部结构完全由 cubie foundation 构成。 */
-    .cube-inner-core { position: absolute; left: 50%; top: 50%; width: 136px; height: 136px; margin: -68px 0 0 -68px; transform-style: preserve-3d; pointer-events: none; }
-    .cube-inner-core-face { position: absolute; inset: 0; border-radius: 15px; background: linear-gradient(145deg, #383838, #111 44%, #020202 82%); box-shadow: inset 3px 3px 4px rgba(255,255,255,.09), inset -5px -5px 6px rgba(0,0,0,.95); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-    .cube-inner-core-face-u { transform: rotateX(90deg) translateZ(60px); }
-    .cube-inner-core-face-r { transform: rotateY(90deg) translateZ(60px); }
-    .cube-inner-core-face-f { transform: translateZ(60px); }
-    .cube-inner-core-face-d { transform: rotateX(-90deg) translateZ(60px); }
-    .cube-inner-core-face-l { transform: rotateY(-90deg) translateZ(60px); }
-    .cube-inner-core-face-b { transform: rotateY(180deg) translateZ(60px); }
-    .cube-cubie, .cube-turn-layer { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; transform-style: preserve-3d; }
-    .cube-turn-layer { inset: 0; width: auto; height: auto; left: 0; top: 0; margin: 0; transition-property: transform; transition-timing-function: cubic-bezier(.2,.8,.2,1); will-change: transform; }
-    /* 先放置完整黑色 cubie foundation，再叠圆角面板。它是连续的实体底座，不会在圆角交界露出白色舞台。 */
-    .cube-cubie-foundation-face { position: absolute; left: 50%; top: 50%; width: 55px; height: 55px; margin: -27.5px 0 0 -27.5px; border-radius: 12px; background: linear-gradient(145deg, var(--cube-structure-light), #0a0a0a 56%, var(--cube-structure-dark)); box-shadow: inset 1px 1px 2px rgba(255,255,255,.09), inset -3px -3px 4px rgba(0,0,0,.96); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-    .cube-cubie-foundation-face-u { transform: rotateX(90deg) translateZ(22px); }
-    .cube-cubie-foundation-face-r { transform: rotateY(90deg) translateZ(22px); }
-    .cube-cubie-foundation-face-f { transform: translateZ(22px); }
-    .cube-cubie-foundation-face-d { transform: rotateX(-90deg) translateZ(22px); }
-    .cube-cubie-foundation-face-l { transform: rotateY(-90deg) translateZ(22px); }
-    .cube-cubie-foundation-face-b { transform: rotateY(180deg) translateZ(22px); }
-    .cube-cubie-face { position: absolute; inset: 0; padding: 5px; border: 1px solid #030303; border-radius: 17px; background: linear-gradient(145deg, #474747 0%, var(--cube-structure-mid) 38%, var(--cube-structure-dark) 82%); box-shadow: inset 2px 2px 3px rgba(255,255,255,.11), inset -4px -4px 5px rgba(0,0,0,.95), 0 1px 1px rgba(0,0,0,.5); transform-style: preserve-3d; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-    .cube-cubie-face .cube-sticker { display: block; width: 100%; height: 100%; transform: translateZ(3px); }
-    .cube-cubie-face-u { transform: rotateX(90deg) translateZ(25px); }
-    .cube-cubie-face-r { transform: rotateY(90deg) translateZ(25px); }
-    .cube-cubie-face-f { transform: translateZ(25px); }
-    .cube-cubie-face-d { transform: rotateX(-90deg) translateZ(25px); }
-    .cube-cubie-face-l { transform: rotateY(-90deg) translateZ(25px); }
-    .cube-cubie-face-b { transform: rotateY(180deg) translateZ(25px); }
-    .cube-face { position: absolute; width: 164px; height: 164px; display: grid; grid-template-columns: repeat(3,1fr); grid-template-rows: repeat(3,1fr); gap: 5px; padding: 6px; background: linear-gradient(145deg, #475569, #111827 52%, #020617); border: 3px solid #111827; border-radius: 9px; box-shadow: inset 2px 2px 0 rgba(255,255,255,.12), inset -3px -4px 0 rgba(0,0,0,.65); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-    .cube-cubie-face .cube-sticker { border-radius: var(--cube-sticker-radius); border: 1px solid rgba(0,0,0,.38); background: linear-gradient(135deg, rgba(255,255,255,.30), rgba(255,255,255,.07) 22%, transparent 46%), var(--sticker-color) !important; box-shadow: inset 0 1px 1px rgba(255,255,255,.28), inset 0 -2px 2px rgba(0,0,0,.16), 0 2px 2px rgba(0,0,0,.38); }
-    .cube-turn-overlay { pointer-events: none; transform-style: preserve-3d; transition-property: transform; transition-timing-function: cubic-bezier(.2,.8,.2,1); will-change: transform; z-index: 2; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-    .cube-turn-overlay::before { content: ""; position: absolute; inset: -2px; display: block; background: #111827; border: 2px solid #111827; border-radius: 9px; transform: rotateY(180deg) translateZ(10px); backface-visibility: hidden; -webkit-backface-visibility: hidden; pointer-events: none; }
-
-    /* ===== 底部标签页 ===== */
-    .bottom-tabs { display: flex; gap: 0; margin-top: 28px; border-bottom: 1px solid var(--rule); }
-    .bottom-tabs button { min-height: 42px; padding: 10px 20px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--warm-gray); font-size: 14px; font-weight: 600; }
-    .bottom-tabs button:hover:not(:disabled) { color: var(--ink); background: transparent; transform: none; }
-    .bottom-tabs button.active { color: var(--gold); border-bottom-color: var(--gold); }
-    .tab-panel { padding: 20px 0; }
-    .tab-panel[hidden] { display: none; }
-
-    /* ===== 历史面板 ===== */
-    .history-preferences { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; font-size: 13px; }
-    .history-preferences label { font-size: 12px; color: var(--warm-gray); }
-    .history-preferences select { padding: 6px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); color: var(--ink); font-size: 13px; }
-    .history-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
-    .history-summary > div { padding: 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--card); }
-    .history-summary span { display: block; font-size: 11px; color: var(--warm-gray); }
-    .history-summary strong { display: block; font-size: 16px; color: var(--ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
-    .history-list { display: grid; gap: 6px; }
-    .history-entry { width: 100%; display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); color: var(--warm-gray); font-size: 12px; text-align: left; box-shadow: none; }
-    .history-entry:hover:not(:disabled) { border-color: var(--gold); background: var(--muted-surface); }
-    .history-entry strong { color: var(--ink); font-size: 15px; }
-    .history-entry em { font-style: normal; color: var(--warm-gray); font-size: 11px; }
-    .device-history-block { margin-top: 14px; }
-    .device-history-title { font-size: 12px; color: var(--warm-gray); font-weight: 700; margin-bottom: 6px; }
-    .device-history { font-size: 13px; color: var(--warm-gray); }
-
-    /* ===== 复盘面板 ===== */
-    .review-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 13px; }
-    .review-controls input { width: 64px; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); }
-    .review-hint { font-size: 12px; color: var(--warm-gray); margin-bottom: 12px; }
-    .review-list { display: grid; gap: 8px; }
-
-    /* ===== 趋势面板 ===== */
-    .performance-stats { display: flex; gap: 16px; margin-bottom: 10px; font-size: 12px; color: var(--warm-gray); }
-    .performance-stats strong { margin-left: 4px; color: var(--ink); font-size: 14px; }
-    .performance-chart { display: block; width: 100%; height: 180px; border: 1px solid var(--rule); border-radius: 8px; background: var(--card); }
-
-    /* ===== 日志 ===== */
-    .log-section { margin-top: 24px; border-top: 1px solid var(--rule); padding-top: 12px; }
-    .log-section summary { font-size: 12px; color: var(--warm-gray); cursor: pointer; font-family: var(--mono); }
-    .log { background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 10px; max-height: 200px; overflow-y: auto; font-family: var(--mono); font-size: 11px; line-height: 1.5; margin-top: 8px; }
-    .log-line { white-space: pre-wrap; word-break: break-all; }
-    .log-line.move { color: var(--success); }
-    .log-line.error { color: var(--danger); }
-    .log-line.info { color: var(--gold); }
-
-    /* ===== 练习横幅 ===== */
-    .practice-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 10px 16px; border: 1px solid var(--gold-soft); border-radius: 8px; background: var(--gold-soft); color: var(--ink); font-weight: 700; font-size: 14px; }
-    .practice-banner[hidden] { display: none; }
-    .practice-banner button { margin: 0; }
-    .practice-banner-copy { display: flex; flex-direction: column; gap: 2px; }
-    .practice-banner-copy small { font-weight: 400; font-size: 12px; color: var(--warm-gray); }
-
-    /* ===== 浮动按钮 ===== */
-    .floating-analysis-actions { position: fixed; z-index: 30; right: 22px; bottom: 22px; }
-    .floating-action { width: 52px; height: 52px; min-width: 52px; margin: 0; border-radius: 50%; background: var(--gold); color: #fff; border: none; font-size: 14px; font-weight: 800; box-shadow: 0 8px 24px rgba(184,134,11,.3); }
-    .floating-action:hover:not(:disabled) { background: var(--gold-light); transform: translateY(-2px); }
-
-    /* ===== 弹窗 ===== */
-    .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(26,26,26,.4); backdrop-filter: blur(4px); z-index: 1000; overflow-y: auto; padding: 20px; }
-    .modal.open { display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .modal-content { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 24px; max-width: 900px; width: 100%; max-height: 90vh; overflow-y: auto; }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
-    .modal-header h2 { font-size: 20px; margin: 0; }
-    .close-btn { background: var(--muted-surface); color: var(--ink); width: 32px; height: 32px; min-height: 32px; border-radius: 50%; padding: 0; font-size: 18px; line-height: 1; margin: 0; border: 1px solid var(--rule); }
-    .result-modal-content { width: min(760px, 100%); max-height: min(78vh, 720px); }
-    .practice-modal-content { width: min(460px, 100%); }
-    .history-modal-content { width: min(640px, 100%); }
-    .modal-hint { margin: 0 0 12px; color: var(--warm-gray); font-size: 13px; }
-
-    /* ===== 解法结果弹窗 ===== */
-    .solve-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
-    .solve-summary > div { padding: 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--muted-surface); }
-    .solve-summary span, .solve-summary em { display: block; color: var(--warm-gray); font-size: 11px; font-style: normal; }
-    .solve-summary strong { color: var(--ink); font-size: 15px; }
-    .cfop-output { font-family: var(--mono); font-size: 13px; line-height: 1.7; background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px; white-space: pre-wrap; max-height: 56vh; overflow: auto; color: var(--ink); }
-    .placeholder { color: var(--warm-gray); font-size: 13px; padding: 20px; text-align: center; }
-
-    /* ===== 样本提示样式 ===== */
-    .sample-notice { padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-    .sample-notice.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
-    .sample-notice.warning { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; }
-    .sample-notice.error { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
-    .sample-notice::before { content: "ℹ"; font-size: 16px; }
-    .sample-notice.warning::before { content: "⚠"; }
-    .sample-notice.error::before { content: "⚠"; }
-
-    /* ===== 时间轴可视化 ===== */
-    .solve-timeline { margin-top: 16px; padding: 12px; background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 8px; }
-    .timeline-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .timeline-title { font-weight: 600; font-size: 14px; color: var(--ink); }
-    .timeline-stats { display: flex; gap: 12px; font-size: 12px; color: var(--warm-gray); }
-    .timeline-track { position: relative; height: 42px; background: var(--card); border: 1px solid var(--rule); border-radius: 7px; margin-bottom: 10px; overflow: hidden; }
-    .timeline-bar { position: absolute; height: 34px; top: 4px; border-radius: 5px; cursor: pointer; transition: opacity 0.15s; min-width: 2px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
-    .timeline-bar:hover { opacity: 0.85; }
-    .timeline-stage-label { padding: 0 6px; color: #fff; font-size: 11px; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,.38); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .timeline-pause-marker { position: absolute; top: 1px; bottom: 1px; width: 3px; border-radius: 2px; background: #ef4444; box-shadow: 0 0 0 1px #fff, 0 0 7px rgba(239,68,68,.45); cursor: help; }
-    .timeline-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--warm-gray); }
-    .legend-item { display: flex; align-items: center; gap: 4px; }
-    .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
-    .timeline-tooltip { display: none; position: absolute; background: var(--ink); color: var(--paper); padding: 8px 10px; border-radius: 6px; font-size: 12px; pointer-events: none; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-    .timeline-tooltip strong { display: block; margin-bottom: 2px; }
-    .timeline-tooltip span { display: block; color: rgba(255,255,255,0.8); font-size: 11px; }
-
-    /* ===== AI 分析 ===== */
-    .analysis-run-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; font-size: 13px; color: var(--warm-gray); }
-    .analysis-run-controls input { width: 72px; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); }
-    .analysis-run-controls button { margin-left: auto; }
-    .cube-agent-workbench { margin: 0 0 14px; padding: 14px; border: 1px solid var(--rule); border-radius: 16px; background: var(--muted-surface); }
-    .cube-agent-workbench h3 { margin: 0; font-size: 15px; color: var(--ink); }
-    .cube-agent-workbench > p { margin: 5px 0 12px; color: var(--warm-gray); font-size: 12px; line-height: 1.5; }
-    .cube-editor-layout { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(190px, .72fr); gap: 18px; align-items: center; }
-    .cube-editor-preview.cube-visualizer { min-height: 286px; height: 286px; border: 1px solid #d9d6d0; border-radius: 15px; background: radial-gradient(circle at 48% 36%, #fff 0%, #f7f6f3 62%, #eae8e3 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.9); }
-    .cube-editor-preview.cube-visualizer .cube-scene { transform: translateY(7px) scale(.83); }
-    .cube-editor-preview.cube-visualizer .cube-sticker { cursor: pointer; }
-    .cube-editor-preview.cube-visualizer .cube-sticker:hover { outline: 3px solid var(--gold); outline-offset: 2px; }
-    .cube-editor-preview.cube-visualizer .cube-sticker[data-facelet-index$="4"] { cursor: default; }
-    .cube-editor-controls { display: flex; flex-direction: column; gap: 8px; }
-    .cube-editor-palette { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .cube-palette-color { box-sizing: border-box; flex: 0 0 34px; width: 34px; min-width: 34px; height: 34px; padding: 0; border: 2px solid transparent; border-radius: 10px; }
-    .cube-palette-color[data-color="W"] { background: #f7f7f5 !important; }
-    .cube-palette-color[data-color="R"] { background: #d6483f !important; }
-    .cube-palette-color[data-color="G"] { background: #3b9b69 !important; }
-    .cube-palette-color[data-color="Y"] { background: #f0c848 !important; }
-    .cube-palette-color[data-color="O"] { background: #e88739 !important; }
-    .cube-palette-color[data-color="B"] { background: #4382ba !important; }
-    .cube-palette-clear { box-sizing: border-box; width: auto; min-height: 34px; padding: 0 10px; color: var(--warm-gray); background: var(--card); border: 1px solid var(--rule); border-radius: 9px; font-size: 11px; }
-    .cube-palette-color.selected, .cube-palette-clear.selected { border-color: var(--ink); box-shadow: 0 0 0 2px var(--card), 0 0 0 3px var(--gold); }
-    .cube-editor-status { margin: 0; color: var(--warm-gray); font-size: 11px; line-height: 1.45; }
-    .cube-editor-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-    .cube-editor-actions button { font-size: 11px; }
-    .cube-agent-prompt { width: 100%; min-height: 62px; box-sizing: border-box; padding: 9px; border: 1px solid var(--rule); border-radius: 9px; resize: vertical; color: var(--ink); background: var(--card); font: inherit; font-size: 12px; }
-    .cube-agent-submit { width: 100%; font-size: 12px; }
-    .agent-chat-message { margin-top: 10px; padding: 10px; border-radius: 10px; background: var(--muted-surface); color: var(--ink); font-size: 12px; }
-    .agent-chat-message strong { color: var(--gold); font-size: 11px; }
-    .agent-chat-message p { margin: 4px 0; line-height: 1.5; }
-    .agent-chat-message code { display: block; overflow-wrap: anywhere; color: var(--warm-gray); font-size: 10px; }
-    .agent-chat-message.pending { border: 1px dashed var(--rule); background: var(--card); }
-    .analysis-item { background: var(--muted-surface); border: 1px solid var(--rule); border-left: 3px solid var(--gold); padding: 12px; border-radius: 6px; margin-bottom: 8px; }
-    .analysis-item .label { font-size: 12px; color: var(--warm-gray); margin-bottom: 4px; }
-    .analysis-item .value { font-size: 14px; color: var(--ink); }
-    .analysis-item.bottleneck { border-left-color: var(--danger); }
-    .analysis-item.advice { border-left-color: var(--warning); }
-    .analysis-item.encourage { border-left-color: var(--success); }
-    .analysis-dock { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin-top: 16px; }
-    .analysis-card { display: flex; flex-direction: column; gap: 10px; }
-    .coaching-card { gap: 12px; }
-    .coaching-focus { background: var(--gold-soft); border: 1px solid var(--gold-soft-hover); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
-    .coaching-focus .focus-label { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--gold); margin-right: 8px; }
-    .coaching-issues, .coaching-drills { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-direction: column; gap: 8px; }
-    .coaching-issue { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; }
-    .severity-badge { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
-    .severity-high { background: #fef2f2; color: #b91c1c; }
-    .severity-medium { background: #fffbeb; color: #b45309; }
-    .severity-low { background: #f0fdf4; color: #15803d; }
-    .issue-stage { font-size: 11px; color: var(--warm-gray); font-weight: 600; }
-    .issue-evidence { display: block; width: 100%; color: var(--warm-gray); font-size: 12px; margin-top: 2px; }
-    .coaching-drill { display: flex; flex-direction: column; gap: 2px; font-size: 13px; padding: 8px 10px; background: var(--muted-surface); border-radius: 6px; }
-    .coaching-drill strong { color: var(--gold); font-size: 13px; }
-    .drill-reps { color: var(--warm-gray); font-size: 12px; font-style: normal; }
-    .source-tag { font-size: 10px; color: var(--warm-gray); border: 1px solid var(--rule); border-radius: 3px; padding: 0 4px; margin-left: 6px; }
-    .coaching-trend { background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 12px; font-size: 13px; }
-    .coaching-trend .trend-label { font-size: 11px; font-weight: 700; color: var(--gold); margin-right: 8px; }
-    .section-analysis-card { background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; margin-bottom: 10px; }
-    .section-analysis-header { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-    .section-analysis-header strong { color: var(--gold); font-size: 14px; }
-    .section-analysis-header span { color: var(--ink); font-size: 13px; }
-    .section-stage-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; margin-bottom: 10px; }
-    .section-stage { background: var(--card); border: 1px solid var(--rule); border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
-    .section-stage span { color: var(--warm-gray); font-size: 11px; }
-    .section-stage strong { color: var(--gold); font-size: 14px; }
-    .section-stage em { color: var(--ink); font-size: 11px; font-style: normal; }
-    .analysis-replay { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--rule); border-radius: 10px; background: var(--muted-surface); }
-    .analysis-replay-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
-    .analysis-replay-head span, .analysis-replay-label small { display: block; color: var(--warm-gray); font-size: 11px; }
-    .analysis-replay-head strong { display: block; margin-top: 3px; color: var(--ink); font-size: 15px; }
-    .analysis-replay-head em { color: var(--warm-gray); font-size: 11px; font-style: normal; white-space: nowrap; }
-    .analysis-replay-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
-    .analysis-replay-card { overflow: hidden; border: 1px solid var(--rule); border-radius: 9px; background: var(--card); }
-    .analysis-replay-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 9px 10px 0; }
-    .analysis-replay-label span { color: var(--ink); font-weight: 800; font-size: 13px; }
-    .analysis-replay-card > code { display: block; min-height: 42px; padding: 7px 10px; color: var(--warm-gray); font-family: var(--mono); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
-    .analysis-replay-card .solve-replay-player { padding: 8px; border: 0; border-radius: 0; background: transparent; }
-    .analysis-replay-card .solve-replay-heading { display: flex; justify-content: space-between; gap: 8px; color: var(--warm-gray); font-size: 11px; }
-    .analysis-replay-card .solve-replay-heading strong { color: var(--gold); font-family: var(--mono); }
-    .analysis-replay-card .solve-replay-cube { min-height: 192px; }
-    .analysis-replay-card .solve-replay-cube .cube-visualizer { min-height: 192px; transform: scale(.68); transform-origin: center; }
-
-    /* ===== 训练计划 ===== */
-    .plan-card { background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
-    .plan-card.graduated { border-color: var(--success); background: #f0fdf4; }
-    .plan-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-    .plan-title { font-size: 13px; font-weight: 700; color: var(--ink); }
-    .plan-card.graduated .plan-title { color: var(--success); }
-    .plan-stage-tag { font-size: 11px; background: var(--gold-soft); color: var(--gold); padding: 2px 8px; border-radius: 10px; }
-    .plan-progress-bar { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
-    .plan-progress-fill { height: 100%; background: var(--gold); border-radius: 3px; transition: width .4s ease; }
-    .plan-card.graduated .plan-progress-fill { background: var(--success); }
-    .plan-today { font-size: 12px; color: var(--ink); }
-    .plan-today-label { font-size: 11px; color: var(--warm-gray); margin-bottom: 4px; }
-    .plan-drills { list-style: none; padding: 0; margin: 6px 0 0; }
-    .plan-drills li { font-size: 12px; color: var(--warm-gray); padding: 3px 0 3px 12px; position: relative; }
-    .plan-drills li::before { content: "▸"; position: absolute; left: 0; color: var(--gold); }
-    .plan-target { font-size: 11px; color: var(--warm-gray); margin-top: 8px; font-style: italic; }
-
-    /* ===== 回放播放器 ===== */
-    .solve-replay-player { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--rule); border-radius: 10px; background: var(--muted-surface); }
-    .solve-replay-cube { min-height: 230px; }
-    .solve-replay-cube .cube-visualizer { min-height: 230px; transform: scale(.72); transform-origin: center; }
-    .solve-replay-controls { display: grid; gap: 8px; }
-    .solve-replay-toolbar { display: flex; align-items: center; gap: 7px; }
-    .solve-replay-toolbar button { min-width: 42px; margin: 0; padding: 7px 10px; }
-    .solve-replay-toolbar strong { margin-left: auto; color: var(--ink); font-family: var(--mono); font-size: 12px; }
-    .solve-replay-controls input[type="range"] { width: 100%; accent-color: var(--gold); }
-    .solve-replay-heading { display: flex; justify-content: space-between; gap: 8px; color: var(--warm-gray); font-size: 11px; }
-    .solve-replay-heading strong { color: var(--gold); font-family: var(--mono); }
-
-    /* ===== 历史详情 ===== */
-    .history-detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
-    .history-detail-grid div, .history-sequence { padding: 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--muted-surface); }
-    .history-detail-grid span, .history-sequence span { display: block; color: var(--warm-gray); font-size: 11px; }
-    .history-detail-grid strong { color: var(--ink); font-size: 15px; }
-    .history-sequence { margin-bottom: 8px; }
-    .history-sequence code { display: block; margin-top: 5px; color: var(--ink); font-family: var(--mono); line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
-    .history-replay { margin-top: 12px; }
-    .history-actions { display: flex; gap: 8px; margin-top: 14px; }
-    .history-actions button { flex: 1; }
-
-    /* ===== 练习模式弹窗 ===== */
-    .practice-mode-section { margin-bottom: 20px; }
-    .practice-mode-section h3 { font-size: 16px; margin-bottom: 10px; }
-    .practice-recommended-section { padding: 16px; background: var(--gold-soft); border: 1px solid var(--gold-soft-hover); border-radius: 8px; }
-    .practice-recommended-section h3 { margin: 4px 0 8px; }
-    .practice-recommended-section p { font-size: 13px; color: var(--warm-gray); margin-bottom: 12px; }
-    .practice-mode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-    .practice-mode-grid button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px; text-align: left; }
-    .practice-mode-grid button strong { font-size: 14px; }
-    .practice-mode-grid button span { font-size: 11px; color: var(--warm-gray); font-weight: 400; }
-    .practice-filter-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; font-size: 13px; }
-    .practice-filter-controls select { min-height: 34px; padding: 5px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); color: var(--ink); }
-    .practice-formula-name { margin: 0 0 14px; color: var(--gold); font-weight: 700; }
-    .practice-count-label { display: block; margin-bottom: 6px; color: var(--ink); font-size: 13px; font-weight: 700; }
-    #practice-count { width: 100%; margin-bottom: 12px; padding: 10px; border: 1px solid var(--rule); border-radius: 8px; font-size: 16px; background: var(--card); }
-    .formula-actions { display: flex; gap: 8px; margin-top: 14px; }
-    .formula-actions button { flex: 1; }
-    .block-practice-stats { margin-top: 10px; font-size: 12px; color: var(--warm-gray); }
-
-    /* ===== 设置弹窗 ===== */
-    .settings-form { display: grid; gap: 10px; }
-    .settings-form label { font-size: 13px; color: var(--ink); font-weight: 600; }
-    .settings-form input, .settings-form select { padding: 8px 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); color: var(--ink); font-size: 14px; }
-    .settings-toggle { display: flex; align-items: center; gap: 8px; font-weight: 400; }
-    .settings-toggle input { width: auto; }
-
-    /* ===== 公式库弹窗 ===== */
-    .library-toolbar { display: grid; grid-template-columns: minmax(200px,1fr) 140px 150px 130px; gap: 10px; margin-bottom: 12px; }
-    .library-toolbar input, .library-toolbar select { width: 100%; background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 9px 10px; font-size: 13px; }
-    .library-toggle { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; font-size: 13px; white-space: nowrap; }
-    .library-toggle input { width: auto; margin: 0; }
-    .library-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; color: var(--warm-gray); font-size: 12px; }
-    .library-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--rule); }
-    .tab-btn { background: transparent; color: var(--warm-gray); padding: 8px 16px; border: none; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; margin: 0; font-size: 14px; min-height: auto; }
-    .tab-btn.active { background: var(--muted-surface); color: var(--gold); border-bottom-color: var(--gold); }
-    .tab-btn:hover:not(:disabled) { background: var(--muted-surface); transform: none; }
-    .formula-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-    .formula-card { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color .15s; }
-    .formula-card:hover { border-color: var(--gold); }
-    .formula-card.mastered { border-color: var(--success); }
-    .formula-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .formula-id { background: var(--gold); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
-    .formula-name { font-size: 14px; font-weight: 600; color: var(--ink); flex: 1; }
-    .formula-difficulty { color: var(--gold); font-size: 12px; }
-    .formula-case { background: var(--muted-surface); border-radius: 4px; padding: 8px; text-align: center; }
-    .formula-case pre { font-family: var(--mono); font-size: 13px; color: var(--warm-gray); line-height: 1.4; margin: 0; }
-    .formula-moves { background: var(--muted-surface); border-radius: 4px; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
-    .formula-moves code { font-family: var(--mono); font-size: 14px; color: var(--gold); flex: 1; word-break: break-all; }
-    .move-count { font-size: 11px; color: var(--warm-gray); background: var(--card); border: 1px solid var(--rule); padding: 2px 8px; border-radius: 10px; margin-left: 8px; white-space: nowrap; }
-    .formula-section { font-size: 12px; color: var(--ink); margin-bottom: 6px; line-height: 1.6; }
-    .formula-section strong { color: var(--gold); display: block; margin-bottom: 2px; }
-    .formula-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
-    .tag { background: var(--gold-soft); color: var(--gold); padding: 2px 8px; border-radius: 4px; font-size: 10px; }
-    .formula-source { font-size: 10px; color: var(--warm-gray); margin-top: 6px; text-align: right; }
-    /* 公式候选是信息选择，不使用主操作的金色强调，保证公式文本易读。 */
-    .formula-variants { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
-    .formula-variant { min-height: 0; max-width: 100%; padding: 9px 14px; border: 1px solid #d4d4d4; border-radius: 7px; background: #fff; color: #171717; text-align: left; box-shadow: none; }
-    .formula-variant + .formula-variant { margin-top: -1px; }
-    .formula-variant:hover:not(:disabled) { border-color: #171717; background: #f7f7f7; color: #171717; transform: none; }
-    .formula-variant.active { position: relative; z-index: 1; border-color: #171717; background: #fff; box-shadow: none; }
-    .formula-variant .variant-name { font-weight: 800; }
-    .formula-variant code { color: inherit; font-family: var(--mono); font-size: 14px; font-weight: 700; }
-    .formula-variant .variant-meta { color: #525252; font-size: 12px; font-weight: 600; }
-    .formula-actions button.mastered-toggle.active { background: var(--success); color: #fff; border-color: var(--success); }
-    .recommendation { background: var(--gold-soft); border-left: 3px solid var(--gold); padding: 16px; border-radius: 6px; margin-bottom: 20px; }
-    .rec-reason, .rec-plan { font-size: 14px; color: var(--ink); margin-bottom: 8px; line-height: 1.7; }
-    .rec-reason strong, .rec-plan strong { color: var(--gold); }
-    .formula-algorithm { border: 1px solid var(--rule); border-radius: 8px; background: var(--card); overflow: hidden; }
-    .formula-algorithm.primary { border-color: var(--gold-soft-hover); background: var(--gold-soft); }
-    .algorithm-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--rule); color: var(--gold); font-size: 12px; font-weight: 700; }
-    .algorithm-label span { color: var(--warm-gray); font-weight: 500; }
-    .algorithm-moves { display: block; padding: 12px 10px; color: var(--ink); font-family: var(--mono); font-size: 15px; font-weight: 700; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
-    .formula-case-diagram, .formula-3d-preview { display: grid; grid-template-columns: 112px minmax(0,1fr); gap: 12px; align-items: center; background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px; min-height: 112px; }
-    .formula-case-diagram-top { display: flex; justify-content: center; min-height: 112px; }
-    .formula-cube-scene { width: 112px; height: 112px; display: grid; place-items: center; perspective: 560px; overflow: visible; cursor: grab; touch-action: none; }
-    .formula-cube-scene.is-dragging { cursor: grabbing; }
-    .formula-cube3d { width: 72px; height: 72px; position: relative; transform-style: preserve-3d; filter: drop-shadow(0 4px 4px rgba(0,0,0,.22)); }
-    .formula-cube-face { position: absolute; width: 72px; height: 72px; display: grid; grid-template-columns: repeat(3,1fr); grid-template-rows: repeat(3,1fr); gap: 4px; padding: 4px; background: linear-gradient(145deg, var(--cube-structure-light), var(--cube-structure-mid) 45%, var(--cube-structure-dark)); border: 1px solid #020202; border-radius: 15px; backface-visibility: hidden; box-shadow: inset 1px 1px 1px rgba(255,255,255,.10), inset -3px -3px 3px rgba(0,0,0,.85); }
-    .formula-cube-face span { border-radius: 8px; border: 1px solid rgba(0,0,0,.36); background: linear-gradient(135deg, rgba(255,255,255,.26), rgba(255,255,255,.05) 28%, transparent 48%), var(--formula-sticker) !important; box-shadow: inset 0 1px 1px rgba(255,255,255,.22), inset 0 -1px 1px rgba(0,0,0,.16), 0 1px 1px rgba(0,0,0,.38); transform: translateZ(2px); }
-    .formula-cube-face .formula-sticker-neutral,
-    .formula-cube-face .formula-sticker-hidden { visibility: visible; --formula-sticker: #4b5563 !important; filter: none; opacity: 1; }
-    .formula-cube-face .formula-sticker-focus { box-shadow: 0 0 0 2px rgba(15,23,42,.94), 0 0 10px rgba(184,134,11,.72), inset 0 1px 1px rgba(255,255,255,.36); opacity: 1; }
-    .formula-cube-face-u { transform: rotateX(90deg) translateZ(36px); }
-    .formula-cube-face-r { transform: rotateY(90deg) translateZ(36px); }
-    .formula-cube-face-f { transform: translateZ(36px); }
-    .formula-cube-face-d { transform: rotateX(-90deg) translateZ(36px); }
-    .formula-cube-face-l { transform: rotateY(-90deg) translateZ(36px); }
-    .formula-cube-face-b { transform: rotateY(180deg) translateZ(36px); }
-    .formula-top-view { display: grid; grid-template-columns: repeat(5, 18px); grid-template-rows: repeat(5, 18px); gap: 3px; }
-    .formula-top-view > span { width: 18px; height: 18px; border-radius: 4px; background: var(--formula-top-sticker, #4b5563); box-shadow: inset 0 1px 1px rgba(255,255,255,.24), inset 0 -1px 1px rgba(0,0,0,.18); }
-    .formula-top-view > .formula-top-empty { background: transparent; box-shadow: none; }
-    .formula-case-meta, .formula-3d-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-    .formula-case-meta strong, .formula-3d-meta strong { color: var(--gold); font-size: 13px; }
-    .formula-case-meta span, .formula-3d-meta span { color: var(--warm-gray); font-size: 12px; }
-
-    /* ===== 输入框 ===== */
-    input[type="password"], input[type="text"], input[type="number"], input[type="search"] { background: var(--card); border: 1px solid var(--rule); color: var(--ink); padding: 8px 12px; border-radius: 6px; font-size: 13px; width: 100%; margin-bottom: 8px; font-family: var(--mono); }
-    input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184,134,11,.1); }
-    label { font-size: 12px; color: var(--warm-gray); display: block; margin-bottom: 4px; }
-    .info { color: var(--warm-gray); font-size: 11px; margin-top: 6px; }
-    .eyebrow { color: var(--gold); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-
-    /* ===== 数据流 ===== */
-    .stream-container { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
-    .stream-header { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--gold); }
-    .stream-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse-dot 1s ease-in-out infinite; }
-    .stream-raw { font-family: var(--mono); font-size: 11px; line-height: 1.5; color: var(--warm-gray); background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
-
-    /* ===== 响应式 ===== */
-    @media (max-width: 900px) {
-      .training-stage { grid-template-columns: 1fr; }
-      .stage-cube { position: static; }
-      .cube-visualizer { min-height: 300px; }
-      .analysis-dock { grid-template-columns: 1fr; }
-      .analysis-replay-grid { grid-template-columns: 1fr; }
-      .library-toolbar { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 600px) {
-      body { padding: 14px 12px 48px; }
-      .app-header { flex-direction: column; align-items: flex-start; }
-      .header-actions { width: 100%; justify-content: flex-start; }
-      .history-summary { grid-template-columns: repeat(2, 1fr); }
-      .session-stats { grid-template-columns: repeat(2, 1fr); }
-      .section-stage-grid { grid-template-columns: repeat(2, 1fr); }
-      .capsule-panel { right: auto; left: 0; }
-      .solve-summary { grid-template-columns: 1fr; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
-    }
-
-    /* ===== APK 风格训练舞台（最终覆盖层） ===== */
-    :root {
-      --brand-purple: #7163ee;
-      --brand-purple-dark: #5f51dc;
-      --brand-soft: #eceaff;
-      --brand-pale: #f7f6ff;
-      --app-bg: #f7f7fb;
-    }
-    html, body { background: var(--app-bg); }
-    body {
-      max-width: none;
-      padding: 20px 24px 72px;
-      background-image: none;
-    }
-    .app-header {
-      margin: -20px -24px 22px;
-      padding: 28px max(24px, calc((100% - 1120px) / 2)) 24px;
-      border: 0;
-      border-radius: 0 0 24px 24px;
-      background: linear-gradient(135deg, #786bf0 0%, #6557e4 100%);
-      color: #fff;
-      box-shadow: 0 12px 28px rgba(94, 81, 211, .2);
-    }
-    .app-header h1, .app-header .subtitle { color: #fff; }
-    .app-header h1 { font-family: var(--sans); font-weight: 800; letter-spacing: -.03em; }
-    .app-header .badge { border-color: rgba(255,255,255,.4); background: rgba(255,255,255,.14); color: #fff; }
-    .app-header .ghost,
-    .app-header .connection-capsule summary {
-      border-color: rgba(255,255,255,.34);
-      background: rgba(255,255,255,.12);
-      color: #fff;
-    }
-    .app-header .ghost:hover:not(:disabled),
-    .app-header .connection-capsule summary:hover { border-color: #fff; background: rgba(255,255,255,.2); color: #fff; }
-    .app-header .capsule-device, .app-header .capsule-label { color: #fff; }
-    .training-stage {
-      width: min(1120px, 100%);
-      margin: 0 auto;
-      grid-template-columns: minmax(0, 1fr) minmax(360px, 500px);
-      gap: 24px;
-      min-height: 0;
-    }
-    .stage-primary { gap: 18px; }
-    .scramble-section {
-      padding: 20px;
-      border: 1px solid #e9e8f4;
-      border-radius: 20px;
-      background: #fff;
-      box-shadow: 0 10px 28px rgba(74, 67, 157, .08);
-    }
-    .scramble-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
-    .scramble-heading-actions { display: flex; align-items: center; gap: 7px; }
-    .scramble-section h2 { margin: 0; color: var(--ink); font-family: var(--sans); font-size: 22px; font-weight: 800; letter-spacing: -.03em; text-transform: none; }
-    .scramble-view-toggle { min-height: 36px; padding: 7px 12px; border: 1px solid var(--brand-purple); border-radius: 10px; background: var(--brand-purple); color: #fff; font-size: 12px; font-weight: 700; }
-    .scramble-settings-toggle { display: grid; place-items: center; width: 36px; min-height: 36px; padding: 0; border: 1px solid var(--brand-purple); border-radius: 10px; background: var(--brand-purple); color: #fff; font-size: 19px; font-weight: 400; line-height: 1; }
-    .scramble-settings-toggle[aria-expanded="true"] { background: var(--brand-purple); border-color: var(--brand-purple); color: #fff; }
-    .scramble-view-toggle:hover:not(:disabled),
-    .scramble-settings-toggle:hover:not(:disabled) { border-color: var(--brand-purple-dark); background: var(--brand-purple-dark); color: #fff; transform: none; }
-    .cross-training-settings { display: grid; gap: 10px; margin-bottom: 12px; }
-    .cross-training-settings[hidden] { display: none; }
-    .scramble-config-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #ecebf7; border-radius: 13px; background: var(--brand-pale); }
-    .scramble-config-title { display: flex; align-items: center; gap: 7px; color: #38335e; font-size: 12px; font-weight: 800; white-space: nowrap; }
-    .help-icon { min-height: 20px; width: 20px; padding: 0; border: 0; border-radius: 50%; background: #d9d6ff; color: var(--brand-purple-dark); font-size: 12px; }
-    .help-icon:hover:not(:disabled) { background: var(--brand-purple); color: #fff; transform: none; }
-    .cross-step-selector { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
-    .cross-step-button { min-width: 29px; min-height: 28px; padding: 3px 8px; border: 1px solid #dedbfa; border-radius: 8px; background: #fff; color: #6b658f; font-size: 12px; font-weight: 700; }
-    .cross-step-button:hover:not(:disabled) { border-color: var(--brand-purple); background: #f0efff; color: var(--brand-purple-dark); transform: none; }
-    .cross-step-button.active { border-color: var(--brand-purple); background: var(--brand-purple); color: #fff; box-shadow: 0 3px 8px rgba(113,99,238,.25); }
-    .scramble-section .scramble { margin-top: 14px; padding: 16px 8px 8px; border: 0; background: transparent; color: var(--brand-purple-dark); text-align: center; }
-    .scramble-move { min-width: 34px; height: 34px; border-color: #e8e7f0; border-radius: 9px; background: #f6f6fa; color: #5e5b73; font-size: 14px; }
-    .scramble-move.next { border-color: var(--brand-purple); background: var(--brand-purple); color: #fff; box-shadow: 0 5px 12px rgba(113,99,238,.22); }
-    .scramble-move.completed { border-color: #d9d7eb; background: #e8e7ef; color: #8d8a9c; }
-    .scramble-action-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; margin-top: 10px; }
-    .scramble-action-row button { min-height: 36px; padding: 7px 9px; border-radius: 10px; font-size: 12px; }
-    .scramble-action-row .primary { border-color: var(--brand-purple); background: var(--brand-purple); color: #fff; }
-    .scramble-action-row .primary:hover:not(:disabled) { border-color: var(--brand-purple-dark); background: var(--brand-purple-dark); }
-    .scramble-action-row .soft-action { border-color: #e3e1f5; background: #f8f7ff; color: #5e57a0; }
-    .scramble-action-row .soft-action:hover:not(:disabled) { border-color: #bcb5ff; background: #efedff; color: var(--brand-purple-dark); transform: none; }
-    .scramble-tools { margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0eff6; }
-    .scramble-tools button { min-height: 31px; padding: 5px 10px; border-radius: 8px; }
-    .stage-cube { position: sticky; top: 18px; align-self: stretch; display: flex; }
-    .stage-cube .cube-visualizer { flex: 1; min-height: 500px; border: 1px solid #e9e8f4; border-radius: 24px; background: radial-gradient(circle at 50% 35%, #fff 0%, #fbfbfe 54%, #ececf4 100%); box-shadow: 0 14px 40px rgba(74,67,157,.12); }
-    .connect-cube-button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 12px; min-height: 44px; border: 0; border-radius: 13px; background: var(--brand-purple); color: #fff; box-shadow: 0 8px 20px rgba(113,99,238,.24); font-size: 14px; font-weight: 800; }
-    .connect-cube-button:hover:not(:disabled) { background: var(--brand-purple-dark); transform: translateY(-1px); }
-    .ai-insight-panel { margin: 0 0 14px; padding: 14px; border: 1px solid #e7e4fb; border-radius: 16px; background: linear-gradient(145deg, #fbfaff, #f4f2ff); }
-    .ai-insight-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
-    .ai-insight-heading > div { display: flex; flex-direction: column; gap: 2px; }
-    .ai-insight-heading span, .ai-insight-label { color: var(--brand-purple); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-    .ai-insight-heading strong { color: #37325f; font-size: 14px; }
-    .ai-insight-heading em { color: #77728e; font-size: 11px; font-style: normal; white-space: nowrap; }
-    .ai-stage-insight-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-    .ai-stage-insight { padding: 9px 9px 7px; border: 1px solid #e6e3f5; border-radius: 11px; background: #fff; }
-    .ai-stage-insight-head { display: flex; justify-content: space-between; gap: 5px; color: #6f6b80; font-size: 11px; }
-    .ai-stage-insight-head strong { color: #39344f; font-size: 12px; font-variant-numeric: tabular-nums; }
-    .ai-stage-insight small { color: #9793a5; font-size: 10px; }
-    .ai-stage-bar { height: 5px; margin: 8px 0 4px; overflow: hidden; border-radius: 99px; background: #efedf8; }
-    .ai-stage-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #8b7ff4, #6254df); }
-    .ai-slot-insights { margin-top: 12px; padding-top: 11px; border-top: 1px solid #e7e4f2; }
-    .ai-slot-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 7px; }
-    .ai-slot-insight { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 10px; background: rgba(255,255,255,.76); }
-    .ai-slot-insight strong { color: #4c43bd; font-size: 12px; }
-    .ai-slot-insight span { color: #4a465b; font-size: 11px; font-weight: 700; }
-    .ai-slot-insight small { color: #89859a; font-size: 10px; }
-    .bottom-tabs { width: min(1120px, 100%); margin: 22px auto 0; padding: 5px; border: 1px solid #e9e8f4; border-radius: 16px; background: #fff; box-shadow: 0 8px 22px rgba(74,67,157,.08); }
-    .bottom-tabs button { flex: 1; min-height: 38px; border: 0; border-radius: 11px; color: #77738b; }
-    .bottom-tabs button.active { background: var(--brand-soft); color: var(--brand-purple-dark); border: 0; }
-    button:focus-visible, input:focus-visible, summary:focus-visible, select:focus-visible { outline-color: rgba(113,99,238,.5); }
-    @media (max-width: 900px) {
-      .training-stage { width: 100%; }
-      .stage-cube { order: -1; display: block; }
-      .stage-cube .cube-visualizer { min-height: 410px; }
-    }
-    @media (max-width: 600px) {
-      body { padding: 14px 12px 60px; }
-      .app-header { margin: -14px -12px 18px; padding: 22px 16px 18px; border-radius: 0 0 20px 20px; }
-      .scramble-section { padding: 15px; border-radius: 16px; }
-      .scramble-config-bar { align-items: flex-start; flex-direction: column; }
-      .cross-step-selector { justify-content: flex-start; }
-      .scramble-action-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .stage-cube .cube-visualizer { min-height: 360px; border-radius: 18px; }
-      .bottom-tabs { margin-top: 16px; }
-      .ai-insight-heading { flex-direction: column; }
-      .ai-insight-heading em { white-space: normal; }
-      .ai-stage-insight-grid, .ai-slot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .cube-editor-layout { grid-template-columns: 1fr; }
-    }
-
-    /* ===== 主舞台主题适配 ===== */
-    body {
-      /* 旧训练舞台组件统一复用当前主题变量，切换主题时不会残留金色。 */
-      --brand-purple: var(--gold);
-      --brand-purple-dark: var(--gold);
-      --brand-soft: var(--gold-soft);
-      --brand-pale: var(--muted-surface);
-      --app-bg: var(--ivory);
-    }
-    html, body { background: var(--app-bg); }
-    .app-header {
-      background: linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 100%);
-      box-shadow: 0 12px 28px color-mix(in srgb, var(--gold) 20%, transparent);
-    }
-    .training-stage {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      align-items: stretch;
-    }
-    .stage-primary, .stage-cube { min-width: 0; }
-    .app-header .capsule-panel {
-      color: var(--ink);
-      background: var(--card);
-      border-color: var(--rule);
-    }
-    .app-header .capsule-panel > div { color: var(--ink); }
-    .app-header .capsule-panel .ghost {
-      border-color: var(--rule);
-      background: transparent;
-      color: var(--ink);
-    }
-    .app-header .capsule-panel .ghost:hover:not(:disabled) {
-      border-color: var(--gold);
-      background: var(--gold-soft);
-      color: var(--gold);
-    }
-    .scramble-config-bar { border-color: var(--gold-soft-hover); background: var(--brand-pale); }
-    .scramble-settings-toggle[aria-expanded="true"] { border-color: var(--gold); background: var(--gold); }
-    .scramble-config-title { color: var(--ink); }
-    .help-icon { background: var(--gold-soft-hover); color: var(--gold); }
-    .cross-step-button { border-color: var(--gold-soft-hover); color: var(--warm-gray); }
-    .cross-step-button:hover:not(:disabled) { border-color: var(--gold); background: var(--gold-soft); color: var(--brand-purple-dark); }
-    .cross-step-button.active,
-    .scramble-move.next,
-    .scramble-action-row .primary { border-color: var(--gold); background: var(--gold); }
-    .scramble-section .scramble { color: var(--brand-purple-dark); }
-    .scramble-action-row .soft-action { border-color: var(--gold-soft-hover); background: var(--brand-pale); color: var(--brand-purple-dark); }
-    .scramble-action-row .soft-action:hover:not(:disabled) { border-color: var(--gold-light); background: var(--gold-soft); color: var(--brand-purple-dark); }
-    .stage-cube .cube-visualizer { box-shadow: 0 14px 40px color-mix(in srgb, var(--gold) 12%, transparent); }
-    .ai-insight-panel { border-color: var(--gold-soft-hover); background: linear-gradient(145deg, var(--card), var(--muted-surface)); }
-    .ai-insight-heading span, .ai-insight-label,
-    .ai-slot-insight strong { color: var(--gold); }
-    .ai-insight-heading strong, .ai-stage-insight-head strong { color: var(--ink); }
-    .ai-stage-insight { border-color: var(--rule); }
-    .ai-stage-bar { background: var(--gold-soft); }
-    .ai-stage-bar i { background: linear-gradient(90deg, var(--gold-light), var(--gold)); }
-    .bottom-tabs { border-color: var(--rule); box-shadow: 0 8px 22px color-mix(in srgb, var(--gold) 8%, transparent); }
-    .bottom-tabs button.active { background: var(--gold-soft); color: var(--brand-purple-dark); }
-    button:focus-visible, input:focus-visible, summary:focus-visible, select:focus-visible { outline-color: color-mix(in srgb, var(--gold) 50%, transparent); }
-    /* 公式库缩略图直接复用主舞台 CubeVisualizer；仅缩小视口，不另画平面魔方。 */
-    .formula-cube-scene.cube-visualizer { width: 112px; min-width: 112px; min-height: 112px; height: 112px; border: 0; border-radius: 12px; background: transparent; box-shadow: none; perspective: 560px; }
-    .formula-cube-scene.cube-visualizer .cube-scene { width: 236px; height: 236px; transform: translateY(2px) scale(.46); }
-    .formula-cube-scene.cube-visualizer .cube-scene::after { opacity: .65; }
-  </style>
+  <link rel="stylesheet" href="bundle.css">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳转到主要内容</a>
@@ -807,9 +12,10 @@
   <header class="app-header">
     <div>
       <h1>CubeMind <span class="badge">v0.4</span></h1>
-      <div class="subtitle">智能魔方同步 · CFOP 阶段分析 · 公式库专项训练</div>
+      <div class="subtitle">记录复原 · 找到弱项 · 专项训练</div>
     </div>
     <div class="header-actions">
+      <button id="btn-open-agent" title="打开 AI 教练">AI 教练</button>
       <button id="btn-open-library" class="ghost">公式库</button>
       <button id="btn-open-practice-mode" class="ghost">练习模式</button>
       <button id="btn-open-settings" class="ghost">设置</button>
@@ -837,6 +43,7 @@
           <div class="controls" aria-label="BLE 缺步诊断">
             <button id="btn-toggle-ble-diagnostics" class="ghost" type="button">开始诊断录制</button>
             <button id="btn-export-ble-diagnostics" class="ghost" type="button">导出诊断</button>
+            <button id="btn-export-ble-replay" class="ghost" type="button">导出回放夹具</button>
           </div>
           <small id="ble-diagnostics-status" class="connection-hint">仅保存本次浏览器内存中的 BLE 原始包，用于定位缺步；不会上传。</small>
         </div>
@@ -847,78 +54,96 @@
   <div class="practice-banner" id="practice-banner" hidden>
     <div class="practice-banner-copy">
       <span id="practice-info"></span>
-      <small id="practice-feedback" hidden aria-live="polite"></small>
     </div>
     <button id="btn-retry-practice" class="secondary" hidden>重新开始本次</button>
     <button id="btn-end-practice" class="danger">终止练习</button>
   </div>
 
   <main id="main-content" class="training-stage">
-    <div class="stage-primary">
-      <div class="scramble-section" id="scramble-stage">
-        <div class="scramble-heading">
-          <div>
-            <h2>Cross 训练</h2>
-          </div>
-          <div class="scramble-heading-actions">
-            <button id="btn-toggle-scramble-steps" class="scramble-view-toggle" type="button">显示完整</button>
-            <button id="btn-toggle-cross-settings" class="scramble-settings-toggle" type="button" aria-expanded="false" aria-controls="cross-training-settings" title="Cross 训练设置">＋</button>
-          </div>
-        </div>
-        <div id="cross-training-settings" class="cross-training-settings" hidden>
-          <div class="scramble-config-bar" aria-label="Cross 打乱设置">
-            <div class="scramble-config-title">
-              <span>白色十字</span>
-              <button class="help-icon" type="button" title="固定步数会筛选白色 Cross 的最短解长度">?</button>
-            </div>
-            <div class="cross-step-selector" id="cross-step-selector" aria-label="Cross 最短解步数">
-              <button type="button" class="cross-step-button active" data-cross-steps="random">随机</button>
-              <button type="button" class="cross-step-button" data-cross-steps="1">1</button>
-              <button type="button" class="cross-step-button" data-cross-steps="2">2</button>
-              <button type="button" class="cross-step-button" data-cross-steps="3">3</button>
-              <button type="button" class="cross-step-button" data-cross-steps="4">4</button>
-              <button type="button" class="cross-step-button" data-cross-steps="5">5</button>
-              <button type="button" class="cross-step-button" data-cross-steps="6">6</button>
-              <button type="button" class="cross-step-button" data-cross-steps="7">7</button>
-              <button type="button" class="cross-step-button" data-cross-steps="8">8</button>
-            </div>
-          </div>
-          <div class="controls scramble-tools">
-            <span class="cross-target-fixed">白色十字 · 白面朝下</span>
-            <button id="btn-solve-cross" class="ghost">求解十字</button>
-            <button id="btn-solve-xcross" class="ghost">求解 XCross</button>
-          </div>
-        </div>
-        <div class="scramble" id="scramble-text">点击生成</div>
-        <div class="scramble-action-row">
-          <button id="btn-next-scramble" class="primary">新打乱</button>
-        </div>
-        <div class="cross-solution" id="cross-solution" hidden></div>
-        <div class="xcross-solution" id="xcross-solution" hidden></div>
+    <div class="timer-section" id="timer-stage">
+      <span class="timer-caption">本次复原</span>
+      <p class="inspection-status" id="inspection-status" hidden aria-live="polite"></p>
+      <div class="timer-display" id="timer-display" aria-live="polite">0.00</div>
+      <div class="cfop-phase-indicator" id="cfop-phase-indicator" aria-label="CFOP 阶段进度">
+        <span class="phase-seg" data-phase="cross">Cross</span>
+        <span class="phase-seg" data-phase="f2l">F2L</span>
+        <span class="phase-seg" data-phase="oll">OLL</span>
+        <span class="phase-seg" data-phase="pll">PLL</span>
       </div>
+      <p class="timer-hint" id="timer-hint">转动魔方自动开始计时 · 还原后自动停止</p>
+      <div class="timer-manual">
+        <button id="btn-start" class="ghost">手动开始</button>
+        <button id="btn-stop" class="ghost" disabled>停止</button>
+        <button id="btn-reset" class="ghost">重置</button>
+      </div>
+    </div>
 
-      <div class="timer-section" id="timer-stage">
-        <p class="inspection-status" id="inspection-status" hidden aria-live="polite"></p>
-        <div class="timer-display" id="timer-display" aria-live="polite">0.00</div>
-        <p class="timer-hint">转动魔方自动开始计时 · 还原后自动停止</p>
-        <div class="timer-manual">
-          <button id="btn-start" class="ghost">手动开始</button>
-          <button id="btn-stop" class="ghost" disabled>停止</button>
-          <button id="btn-reset" class="ghost">重置</button>
+    <div class="scramble-section" id="scramble-stage">
+      <div class="scramble-heading">
+        <div>
+          <h2>当前打乱</h2>
+        </div>
+        <div class="scramble-heading-actions">
+          <button id="btn-toggle-scramble-steps" class="scramble-view-toggle" type="button">仅看剩余</button>
+          <button id="btn-toggle-cross-settings" class="scramble-settings-toggle" type="button" aria-expanded="false" aria-controls="cross-training-settings" aria-label="打乱与十字训练设置" title="打乱与十字训练设置">设置</button>
         </div>
       </div>
-
-      <div class="session-stats" id="session-stats">
-        <div class="quick-stat"><span>上一把</span><strong id="stat-last">—</strong></div>
-        <div class="quick-stat"><span>Session AO5</span><strong id="stat-ao5">—</strong></div>
-        <div class="quick-stat"><span>本组次数</span><strong id="stat-count">0</strong></div>
+      <div id="cross-training-settings" class="cross-training-settings" hidden>
+        <div class="scramble-config-bar" aria-label="Cross 打乱设置">
+          <div class="scramble-config-title">
+            <span>白色十字</span>
+            <button class="help-icon" id="btn-cross-help" type="button" aria-expanded="false" aria-controls="cross-help-text" title="固定步数会筛选白色 Cross 的最短解长度">?</button>
+          </div>
+          <div class="cross-step-selector" id="cross-step-selector" aria-label="Cross 最短解步数">
+            <button type="button" class="cross-step-button active" data-cross-steps="random">随机</button>
+            <button type="button" class="cross-step-button" data-cross-steps="1">1</button>
+            <button type="button" class="cross-step-button" data-cross-steps="2">2</button>
+            <button type="button" class="cross-step-button" data-cross-steps="3">3</button>
+            <button type="button" class="cross-step-button" data-cross-steps="4">4</button>
+            <button type="button" class="cross-step-button" data-cross-steps="5">5</button>
+            <button type="button" class="cross-step-button" data-cross-steps="6">6</button>
+            <button type="button" class="cross-step-button" data-cross-steps="7">7</button>
+            <button type="button" class="cross-step-button" data-cross-steps="8">8</button>
+          </div>
+          <p class="cross-help-text" id="cross-help-text" hidden>固定步数会筛选白色 Cross 的最短解长度：例如选「3」，则只生成最短 Cross 恰好 3 步的打乱；「随机」则 1–8 步随机出现。</p>
+        </div>
+        <div class="controls scramble-tools">
+          <span class="cross-target-fixed">白色十字 · 白面朝下</span>
+          <button id="btn-solve-cross" class="ghost">求解十字</button>
+          <button id="btn-solve-xcross" class="ghost">求解 XCross</button>
+        </div>
       </div>
+      <div class="scramble" id="scramble-text">点击生成</div>
+      <div class="scramble-action-row">
+        <button id="btn-next-scramble" class="primary">新打乱</button>
+      </div>
+      <div class="cross-solution" id="cross-solution" hidden></div>
+      <div class="xcross-solution" id="xcross-solution" hidden></div>
     </div>
 
     <div class="stage-cube">
+      <div class="cube-panel-heading">
+        <div><span class="cube-panel-label">LIVE CUBE</span><h2>实时魔方</h2></div>
+        <button id="btn-open-connection" class="ghost" type="button" aria-controls="connection-menu">连接魔方</button>
+      </div>
       <div id="cube-3d"></div>
+      <div class="cube-panel-footer">
+        <p>拖动旋转 · 方向键调整视角</p>
+        <button id="btn-calibrate-gyro" class="ghost gyro-calibrate" type="button" title="将实体魔方摆成白上、黄下后点击">校准持握</button>
+      </div>
+    </div>
+
+    <div class="session-stats" id="session-stats">
+      <div class="quick-stat"><span>上一把</span><strong id="stat-last">—</strong></div>
+      <div class="quick-stat"><span>平均 AO5</span><strong id="stat-ao5">—</strong></div>
+      <div class="quick-stat"><span>本组次数</span><strong id="stat-count">0</strong></div>
     </div>
   </main>
+
+  <section class="training-dashboard" aria-labelledby="training-dashboard-title">
+    <div class="training-dashboard-heading"><h2 id="training-dashboard-title">下一项训练</h2><span>从实战发现弱项，练习后继续观察</span></div>
+    <div id="training-dashboard"></div>
+  </section>
 
   <nav class="bottom-tabs" aria-label="数据面板">
     <button data-panel="panel-history">历史</button>
@@ -981,103 +206,115 @@
     <div class="log" id="log"></div>
   </details>
 
-  <div class="floating-analysis-actions">
-    <button id="btn-open-agent" class="floating-action" title="DeepSeek AI 分析">AI</button>
-  </div>
-
   <!-- 解法结果弹窗 -->
-  <div class="modal result-modal" id="cfop-modal">
+  <div class="modal result-modal" id="cfop-modal" role="dialog" aria-modal="true" aria-label="本次复原结果">
     <div class="modal-content result-modal-content">
       <div class="modal-header">
-        <button class="close-btn" id="btn-close-cfop">×</button>
+        <button class="close-btn" id="btn-close-cfop" aria-label="关闭复原结果">×</button>
       </div>
       <div class="solve-summary" id="cfop-summary"></div>
       <div id="result-next-action"></div>
-      <pre class="cfop-output" id="cfop-output">（等待本次解法）</pre>
       <div id="solve-timeline"></div>
+      <h3 class="result-section-title">详细解法</h3>
+      <pre class="cfop-output" id="cfop-output">（等待本次解法）</pre>
     </div>
   </div>
 
-  <!-- AI 分析弹窗 -->
-  <div class="modal result-modal" id="agent-modal">
-    <div class="modal-content result-modal-content">
+  <!-- AI 教练抽屉：右侧滑出，内分「复盘分析」与「局面提问」两个标签页 -->
+  <div class="agent-backdrop" id="agent-backdrop" aria-hidden="true"></div>
+  <div class="modal" id="agent-modal" role="dialog" aria-modal="true" aria-label="AI 教练">
+    <div class="modal-content">
       <div class="modal-header">
-        <h2>DeepSeek AI 分析</h2>
-        <button class="close-btn" id="btn-close-agent">×</button>
+        <h2>AI 教练</h2>
+        <button class="close-btn" id="btn-close-agent" aria-label="关闭 AI 教练">×</button>
       </div>
-      <div class="analysis-run-controls">
-        <label for="analysis-count">分析最近</label>
-        <input id="analysis-count" type="number" min="1" value="12">
-        <span>把成绩</span>
-        <button id="btn-run-analysis">开始分析</button>
+      <div class="agent-tabs" role="tablist" aria-label="AI 教练功能">
+        <button class="agent-tab active" type="button" role="tab" aria-selected="true" data-agent-tab="analysis">复盘分析</button>
+        <button class="agent-tab" type="button" role="tab" aria-selected="false" data-agent-tab="editor">局面编辑</button>
       </div>
-      <p class="placeholder" id="analysis-sample-status" aria-live="polite"></p>
-      <section class="cube-agent-workbench" aria-labelledby="cube-editor-title">
-        <h3 id="cube-editor-title">黑色魔方 · 构造局面</h3>
-        <p>点击颜色后涂贴纸；中心块固定为标准配色。填满后可把当前局面随问题一起交给 Agent。</p>
-        <div class="cube-editor-layout">
-          <div id="cube-editor-preview" class="cube-editor-preview" aria-label="可旋转的三维魔方局面编辑器"></div>
-          <div class="cube-editor-controls">
-            <div id="cube-editor-palette" class="cube-editor-palette" aria-label="颜色选择"></div>
-            <p id="cube-editor-status" class="cube-editor-status" aria-live="polite"></p>
-            <div class="cube-editor-actions"><button id="btn-cube-editor-reset" class="ghost">清空</button><button id="btn-cube-editor-solved" class="ghost">填入还原态</button></div>
-            <textarea id="cube-agent-prompt" class="cube-agent-prompt" placeholder="例如：这个局面怎样做更顺手？或：适合练什么？"></textarea>
-            <button id="btn-ask-cube-agent" class="practice-btn cube-agent-submit">带当前局面提问</button>
-          </div>
+      <div class="agent-tab-panel" data-agent-panel="analysis">
+        <div class="analysis-run-controls">
+          <label for="analysis-count">分析最近</label>
+          <input id="analysis-count" type="number" min="1" value="12">
+          <span>把成绩</span>
+          <button id="btn-run-analysis">开始分析</button>
         </div>
-      </section>
-      <div id="training-plan-container"></div>
-      <div id="agent-output"><p class="placeholder">选择要分析的历史把数，再点击"开始分析"。每次手动分析只发起一次 AI 请求。</p></div>
+        <p class="placeholder" id="analysis-sample-status" aria-live="polite"></p>
+        <div id="training-plan-container"></div>
+        <div id="agent-output"><p class="placeholder">选择要分析的历史把数，再点击「开始分析」。每次手动分析只发起一次 AI 请求。</p></div>
+      </div>
+      <div class="agent-tab-panel" data-agent-panel="editor" hidden>
+        <section class="cube-agent-workbench" aria-labelledby="cube-editor-title">
+          <h3 id="cube-editor-title">黑色魔方 · 构造局面</h3>
+          <p>点击颜色后涂贴纸；中心块固定为标准配色。填满后可校验局面；AI 局面求解开发中。</p>
+          <div class="cube-editor-layout">
+            <div id="cube-editor-preview" class="cube-editor-preview" aria-label="可旋转的三维魔方局面编辑器"></div>
+            <div class="cube-editor-controls">
+              <div id="cube-editor-palette" class="cube-editor-palette" aria-label="颜色选择"></div>
+              <p id="cube-editor-status" class="cube-editor-status" aria-live="polite"></p>
+              <div class="cube-editor-actions"><button id="btn-cube-editor-reset" class="ghost">清空</button><button id="btn-cube-editor-solved" class="ghost">填入还原态</button></div>
+            </div>
+          </div>
+          <div class="cube-agent-ask">
+            <textarea id="cube-agent-prompt" class="cube-agent-prompt" rows="1" aria-label="局面备注" placeholder="局面备注（可选）"></textarea>
+            <button id="btn-ask-cube-agent" class="practice-btn cube-agent-submit">校验当前局面</button>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 
   <!-- 练习模式选择弹窗 -->
-  <div class="modal" id="practice-mode-modal">
+  <div class="modal" id="practice-mode-modal" role="dialog" aria-modal="true" aria-label="选择练习模式">
     <div class="modal-content practice-mode-content">
       <div class="modal-header">
         <h2>选择练习模式</h2>
-        <button class="close-btn" id="btn-close-practice-mode">×</button>
+        <button class="close-btn" id="btn-close-practice-mode" aria-label="关闭练习模式">×</button>
       </div>
-      <p class="modal-hint">智能随机会优先未练习和错误率较高的公式；顺序模式按公式编号轮换。</p>
-      <div class="practice-mode-section practice-recommended-section">
-        <span class="eyebrow">Recommended</span>
-        <h3>今日智能训练</h3>
-        <p>从 F2L、OLL、PLL 中优先安排未练和成功率较低的 case，连续完成 10 题。</p>
-        <button id="btn-start-daily-practice" class="practice-btn">开始今日训练 · 10 题</button>
-      </div>
-      <div class="practice-mode-section">
-        <h3>CFOP 分块练习</h3>
-        <div class="practice-mode-grid">
-          <button data-block-practice-mode="cross"><strong>Cross</strong><span>白面朝下真实验证</span></button>
-          <button data-block-practice-mode="f2l"><strong>F2L</strong><span>保留白色十字</span></button>
-          <button data-block-practice-mode="cross-f2l"><strong>Cross + F2L</strong><span>完整打乱分块</span></button>
+      <section class="practice-hero">
+        <div class="practice-hero-copy">
+          <span class="eyebrow">今日推荐</span>
+          <h3>今日智能训练</h3>
+          <p>从 F2L、OLL、PLL 中优先安排未练和成功率较低的 CASE，连续完成 10 个 CASE。</p>
         </div>
-        <div class="block-practice-stats" id="block-practice-stats"></div>
-      </div>
-      <div class="practice-mode-section">
-        <h3>OLL / PLL 公式练习</h3>
-        <div class="practice-filter-controls">
-          <label for="formula-practice-order">出题</label>
-          <select id="formula-practice-order"><option value="random">智能随机</option><option value="sequential">顺序模式</option></select>
-          <label for="formula-practice-difficulty">难度</label>
-          <select id="formula-practice-difficulty"><option value="5">全部</option><option value="1">★</option><option value="2">★★</option><option value="3">★★★</option><option value="4">★★★★</option><option value="5">★★★★★</option></select>
-          <label><input id="formula-practice-unmastered" type="checkbox"> 仅未掌握</label>
-        </div>
-        <div class="practice-mode-grid">
-          <button data-practice-mode="OLL"><strong>只练 OLL</strong><span>专注顶层朝向</span></button>
-          <button data-practice-mode="PLL"><strong>只练 PLL</strong><span>专注顶层换位</span></button>
-          <button data-practice-mode="OLL-PLL"><strong>OLL + PLL</strong><span>随机混合两类案例</span></button>
-        </div>
+        <button id="btn-start-daily-practice" class="practice-btn practice-hero-btn">开始训练 · 10 CASE</button>
+      </section>
+      <div class="practice-columns">
+        <section class="practice-mode-section">
+          <h3>CFOP 分块练习</h3>
+          <div class="practice-mode-grid">
+            <button data-block-practice-mode="cross"><strong>Cross</strong><span>白面朝下真实验证</span></button>
+            <button data-block-practice-mode="f2l"><strong>F2L</strong><span>保留白色十字</span></button>
+            <button data-block-practice-mode="cross-f2l"><strong>Cross + F2L</strong><span>完整打乱分块</span></button>
+          </div>
+          <p class="modal-hint practice-hint">分块练习由完整打乱进入，完成后自动校验对应阶段。</p>
+        </section>
+        <section class="practice-mode-section">
+          <h3>OLL / PLL 公式练习</h3>
+          <div class="practice-filter-controls">
+            <label for="formula-practice-order">CASE 顺序</label>
+            <select id="formula-practice-order"><option value="random">智能随机</option><option value="sequential">顺序模式</option></select>
+            <label for="formula-practice-difficulty">难度</label>
+            <select id="formula-practice-difficulty"><option value="5">全部</option><option value="1">难度 1</option><option value="2">难度 2</option><option value="3">难度 3</option><option value="4">难度 4</option><option value="5">难度 5</option></select>
+            <label class="practice-check"><input id="formula-practice-unmastered" type="checkbox"> 仅未掌握</label>
+          </div>
+          <div class="practice-mode-grid">
+            <button data-practice-mode="OLL"><strong>只练 OLL</strong><span>专注顶层朝向</span></button>
+            <button data-practice-mode="PLL"><strong>只练 PLL</strong><span>专注顶层换位</span></button>
+            <button data-practice-mode="OLL-PLL"><strong>OLL + PLL</strong><span>随机混合两类案例</span></button>
+          </div>
+          <p class="modal-hint practice-hint">智能随机会优先未练习和错误率较高的公式；顺序模式按公式编号轮换。</p>
+        </section>
       </div>
     </div>
   </div>
 
   <!-- 练习确认弹窗 -->
-  <div class="modal result-modal" id="practice-modal">
+  <div class="modal result-modal" id="practice-modal" role="dialog" aria-modal="true" aria-label="专项练习设置">
     <div class="modal-content practice-modal-content">
       <div class="modal-header">
         <h2>开始专项练习</h2>
-        <button class="close-btn" id="btn-close-practice">×</button>
+        <button class="close-btn" id="btn-close-practice" aria-label="关闭专项设置">×</button>
       </div>
       <p class="practice-formula-name" id="practice-formula-name"></p>
       <label class="practice-count-label" for="practice-count">练习次数</label>
@@ -1091,11 +328,11 @@
   </div>
 
   <!-- 设置弹窗 -->
-  <div class="modal result-modal" id="settings-modal">
+  <div class="modal result-modal" id="settings-modal" role="dialog" aria-modal="true" aria-label="设置">
     <div class="modal-content practice-modal-content">
       <div class="modal-header">
         <h2>设置</h2>
-        <button class="close-btn" id="btn-close-settings">×</button>
+        <button class="close-btn" id="btn-close-settings" aria-label="关闭设置">×</button>
       </div>
       <div class="settings-form">
         <label for="setting-cross-steps">十字最大求解步数</label>
@@ -1117,11 +354,11 @@
   </div>
 
   <!-- 历史详情弹窗 -->
-  <div class="modal result-modal" id="history-modal">
+  <div class="modal result-modal" id="history-modal" role="dialog" aria-modal="true" aria-label="历史成绩详情">
     <div class="modal-content history-modal-content">
       <div class="modal-header">
         <h2>历史记录</h2>
-        <button class="close-btn" id="btn-close-history">×</button>
+        <button class="close-btn" id="btn-close-history" aria-label="关闭历史详情">×</button>
       </div>
       <div id="history-detail"></div>
       <div class="formula-actions history-actions">
@@ -1133,11 +370,11 @@
   </div>
 
   <!-- 公式库弹窗 -->
-  <div class="modal" id="library-modal">
+  <div class="modal" id="library-modal" role="dialog" aria-modal="true" aria-labelledby="library-title">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="library-title">公式库</h2>
-        <button class="close-btn" id="btn-close-library">×</button>
+        <button class="close-btn" id="btn-close-library" aria-label="关闭公式库">×</button>
       </div>
       <div id="library-content"></div>
     </div>

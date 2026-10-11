@@ -3,6 +3,8 @@
 > 面向 CFOP 竞速玩家的本地化 AI 解法分析助手  
 > V0.4 · GAN / 魔域智能魔方 · CFOP 分段与逐槽位复盘 · WCA 观察判罚 · 3D 解法回放 · AI 训练建议
 
+面向个人本地训练，无需 CubeMind 账号，不提供排行榜。成绩与训练档案保存在当前浏览器。
+
 ## 🚀 快速开始
 
 ```bash
@@ -39,7 +41,7 @@ npm run harness:verify
 │ http://localhost:3000                                            │
 │                                                                  │
 │  src-frontend/                                                   │
-│   ├── ble/         BLE 连接（GAN v2 AES + 魔域明文）              │
+│   ├── ble/         GAN v2/v4 + 魔域 MHC/MoYu32                   │
 │   ├── scramble/    3x3 WCA 打乱生成                              │
 │   ├── core/        CFOP 阶段识别 + 计时                          │
 │   │                   + WCA 成绩与观察期判罚                      │
@@ -57,11 +59,9 @@ npm run harness:verify
 │  src-backend/                                                    │
 │   ├── routes/                                                   │
 │   │   ├── analyze.ts   POST /api/analyze    DeepSeek 代理        │
-│   │   └── solves.ts    /api/solves         解法历史持久化        │
+│   │   └── diagnostics.ts /api/diagnostics  运行诊断              │
 │   ├── services/                                                 │
 │   │   └── deepseek.ts  API_KEY 隔离，调用 DeepSeek + fallback   │
-│   ├── data/                                                     │
-│   │   └── history.json 本地解法历史（替换 localStorage）         │
 │   └── server.ts        入口 + 静态托管前端 dist/                │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -70,7 +70,7 @@ npm run harness:verify
 
 ```
 d:\计时器\
-├── CLAUDE.md                  ← 项目宪法（必读）
+├── AGENTS.md                  ← 项目约定（CLAUDE.md 为历史文档）
 ├── README.md                  ← 本文件
 ├── package.json               ← npm scripts + 依赖
 ├── tsconfig.json              ← TS 配置
@@ -89,9 +89,9 @@ d:\计时器\
 ├── src-frontend/              ← 前端（浏览器）
 │   ├── main.ts
 │   ├── ble/
-│   │   ├── gan-cube-protocol.ts       GAN v2/v3/v4 协议
+│   │   ├── gan-cube-protocol.ts       GAN v2/v4 协议
 │   │   ├── moyu-cube-protocol.ts      魔域协议
-│   │   ├── gan-crypto.ts              ★ AES-128 加解密（Web Crypto）
+│   │   ├── gan-crypto.ts              AES-128 加解密（复用项目 aes128.ts）
 │   │   └── gan-crypto-helpers.ts      纯函数（parseMac、密钥派生）
 │   ├── scramble/
 │   │   └── scramble-333.ts            3x3 WCA 打乱
@@ -110,17 +110,16 @@ d:\计时器\
 │   ├── utils/
 │   │   ├── mathlib.ts                 CubieCube + moveCube
 │   │   └── lzstring.ts                lz-string 包装（GAN 密钥解压）
-│   └── __tests__/                     单元测试（8 套件，76 用例）
+│   └── __tests__/                     前端单元与回归测试
 │
 └── src-backend/               ← 后端（Node.js）
     ├── server.ts                     Express 入口
     ├── routes/
     │   ├── analyze.ts                POST /api/analyze
-    │   └── solves.ts                 /api/solves CRUD
+    │   └── diagnostics.ts            POST /api/diagnostics
     ├── services/
     │   └── deepseek.ts               DeepSeek API + fallback
-    └── data/
-        └── history.json              解法历史持久化
+    └── __tests__/                    API 与输入校验测试
 ```
 
 ## 🎯 已实现功能
@@ -128,8 +127,8 @@ d:\计时器\
 ### M1: BLE + 打乱
 - ✅ 3x3 WCA 打乱生成（20/25/30 步）
 - ✅ 白色 Cross 固定 1～8 步训练打乱：优先筛选 20 步 WCA 状态，低步数自动回退到可验证短打乱
-- ✅ GAN v2 协议（**AES-128 加密** + 明文双模式）
-- ✅ 魔域协议（明文）
+- ✅ GAN v2/v4 协议（AES-128 加密；v1/v3 尚未实现）
+- ✅ 魔域 MHC 明文协议与 WCU_MY32 加密协议
 
 ### M2: 计时 + Move 流
 - ✅ 计时器（开始/停止/重置）
@@ -145,10 +144,12 @@ d:\计时器\
 - ✅ F2L 四槽位用时、步数、停顿与回退复盘
 
 ### M4: DeepSeek AGENT
-- ✅ 后端代理 DeepSeek API（API_KEY 隔离）
-- ✅ 前端 fallback（无需后端也能跑）
-- ✅ 瓶颈识别 + 训练建议 + 鼓励
-- ✅ 历史数据带入（最近 5 把）
+- ✅ 后端流式代理 DeepSeek API，模型请求、正文读取与格式修复共用超时和取消信号
+- ✅ 无 Key 或网络失败时使用本地规则，页面明确标注分析来源
+- ✅ 分析最近 1–30 把可信常规复原，保留各把 CASE、停顿与动作，排除专项成绩
+- ✅ 以窗口之前最多 30 把的阶段 / 同 CASE 中位数建立个人基准；耗时占比仅展示分布
+- ✅ 模型问题必须引用本次证据；严重度与数字由程序回填，具体公式也需有同阶段证据
+- ✅ 带入专项掌握度、跨天训练档案与训练后的实战表现，调整下一组训练
 
 ### M5: 公式库（V0.2 核心）
 - ✅ F2L 公式库（41 case）
@@ -157,15 +158,23 @@ d:\计时器\
 - ✅ **每条公式包含"如何识别"+"如何执行"教学描述**
 - ✅ AGENT 复盘后一键跳转
 - ✅ OLL / PLL 顶面状态图与 F2L 槽位聚焦图
+- ✅ F2L 每个 case 可保存一条自己的解法，支持修改、删除、局面校验及本机持久化；预览、专项和今日训练使用所选解法
 
 ### 3D 回放与设备姿态
 - ✅ 27 个独立小方块的真实分层转动
 - ✅ 打乱、完整解法与历史详情均支持逐步回放、播放和倍速
+- ✅ 完整动作时间支持实速回放，保留起手等待和长停顿；暂停后继续剩余间隔，可切换匀速演示
+- ✅ 细时间条展示用时占比，阶段卡片显示完整名称、用时和步数；阶段 / F2L 槽位与独立停顿入口可定位原始局面，手机采用两列阶段卡片
 - ✅ 回放默认白底、黄面朝上，便于按 CFOP 视角复盘
+- ✅ AI 问题卡可定位到对应成绩的准确动作片段，从原始打乱和前缀动作重建起点，片段结束自动停止
+- ✅ 片段保留贴纸原色，播放按钮与视角工具条分区；手机按钮至少 44px，整把回放可折叠
+- ✅ 问题片段与整把互斥播放；关闭抽屉、折叠或替换输出后停止推进，清理转层动画和计时器
 - ✅ GAN 姿态四元数归一化、SLERP 平滑与渲染帧合并
 
-### APK 思路落地（V0.4）
-- ✅ 主训练舞台采用紫色品牌栏、白色卡片、Cross 步数选择器和“随机 / WCA 竞赛 / 下一个 / 输入”动作区
+### 训练界面（V0.4）
+- ✅ 主页面集中展示计时、打乱、实时魔方和最近统计，窄屏按阅读顺序排列，保留金色 / 森林 / 海洋 / 紫色主题
+- ✅ 3D 支持拖动、方向键、缩放和视角复位；视角操作不改变实体局面或陀螺仪基准
+- ✅ 主页面展示下一项 CASE 训练；自主完成固定专项也可跟踪后续实战，前后各至少 3 次同 CASE 命中才展示变化
 - ✅ 3D 魔方保持 27 个独立小方块和真实分层转动，增加独立“连接魔方”入口，不复制 APK 资源
 - ✅ AI 结果增加阶段耗时条、步数密度和 F2L 四槽位的用时 / 步数 / 停顿 / 修复概览
 - ✅ 公式库和历史复盘继续复用同一套 3D 预览与白底、黄面朝上的 CFOP 视角
@@ -191,8 +200,8 @@ npx tsx --test src-frontend/__tests__/*.test.ts
 
 | 套件 | 通过/总数 |
 |------|----------|
-| 全部 node:test 套件 | **206/206** |
-| **总计** | **206 · 0 失败** |
+| 全部 node:test 套件 | **455/455** |
+| **总计** | **455 · 0 失败（2026-10-11）** |
 
 ## 🔧 技术栈
 
@@ -201,25 +210,33 @@ npx tsx --test src-frontend/__tests__/*.test.ts
 | 前端语言 | TypeScript (strict) |
 | 前端构建 | esbuild |
 | 前端 BLE | Chrome Web Bluetooth API |
-| 前端加密 | Web Crypto API（crypto.subtle） |
+| 前端加密 | 项目内 AES-128 实现（aes128.ts） |
 | 后端语言 | TypeScript + Node.js |
 | 后端框架 | Express |
 | 后端运行 | tsx (无需编译) |
 | AGENT | DeepSeek API |
 | 压缩算法 | lz-string（cstimer 用了同款） |
 | 测试 | node:test + tsx |
-| 存储 | 前端 localStorage + 后端 JSON 文件 |
+| 存储 | 浏览器 localStorage；历史面板支持 JSON / CSV 导出 |
 
 ## 🎮 使用流程
 
 1. Chrome 打开 `http://localhost:3000`
-2. 点击"生成新打乱"，记下 20 步序列
+2. 点击“新打乱”，查看打乱序列
 3. 把魔方拧成打乱状态
 4. 点击"连接 GAN" → 选蓝牙（**如果是加密模式，弹出 MAC 输入**）
 5. 按提示完成打乱；观察期显示 `15…1`，超时将显示 `+2` 或 `DNF`
 6. 转动第一步开始计时，完成还原后停止
 7. 查看 CFOP、F2L 槽位与停顿复盘；需要时打开 3D 解法回放
 8. 点击 AI 分析或跳转公式库进行专项练习
+
+AI 教练中选择最近的分析把数；页面会区分阶段均值、最近一把的槽位和此前个人基准。点击问题卡的「查看第 X 把」直接回看对应片段，再进入具体公式练习。完整动作间隔会用于实速回放；没有完整时间记录时明确显示匀速演示。缺少准确 CASE 动作区间时不猜位置。历史详情的「查看解法」也提供阶段导航和停顿定位。
+
+历史保存失败会明确提示导出 JSON 备份，新成绩仍留在当前页面；不再自动删除旧记录来重试。刷新或关闭前请先完成导出。
+
+自定义 F2L：打开「公式库 → F2L」，找到 case，展开「添加我的解法」，输入空格分隔的公式后点击「保存并使用」。支持 U R F D L B 及 2 / '，最多 80 步；保存前按该 case 的主解打乱验证，必须完成 F2L 并保留其他槽位。保存后默认使用「我的解法」，也可展开解法列表切回主解；删除自己的解法后恢复主解。数据仅存于本机浏览器。
+
+最新验证包含阶段卡片、停顿定位、自定义解法保存 / 重载 / 删除、专项入口和桌面 / 375px 手机页面；未进行真机 BLE 验收。详细结果见 [Day 35 开发与审查记录](doc/03-dev-log/daily-log/day-35.md)。实速回放验证见 [Day 34](doc/03-dev-log/daily-log/day-34.md)，AI 流式链路的模拟模型验证见 [Day 33](doc/03-dev-log/daily-log/day-33.md)。
 
 ### GAN v4 姿态诊断采样
 
@@ -232,15 +249,15 @@ copy(__cubemindGanDiagnostics.export())
 __cubemindGanDiagnostics.stop()
 ```
 
-导出的 JSON 应随同“静止/旋转方向/动作时间”说明保存，不要把未知载荷直接当作四元数使用。
+导出的 JSON 可随“静止 / 旋转方向 / 动作时间”说明保存，用于复核姿态解析与轴向映射。
 
 ## 🐛 已知限制
 
-- **GAN v2 AES 解密**：纯函数已验证（10/10 测试通过），实际解密依赖浏览器 Web Crypto API（Node 测试环境不支持 AES-ECB）。真 GAN 魔方测试留待用户。
-- **GAN v4 陀螺仪**：已识别 `0xEC` 通知并提供原始/解密字节诊断导出；四元数字段仍需真实 GAN v4 样本标定后再接入 3D 姿态。
-- **iOS Safari**：不支持 Web Bluetooth，仅 Chrome / Edge / Bluefy
-- **魔域陀螺仪**：通知入口已预留，但实际姿态字段仍需真机抓包标定。
-- **历史数据**：当前为 localStorage + 后端 JSON；后续可迁移到 SQLite。
+- **设备验收**：GAN v2/v4、魔域 MY32 姿态已接入代码；本轮未连接真实设备，持续高速转动与持握轴向仍需真机验证。MHC 姿态目前仅录制原始通知。
+- **GAN v1/v3**：未实现，不在当前支持范围。
+- **iOS Safari**：不支持 Web Bluetooth；桌面 / Android Chrome、Edge 可用，iOS 需使用支持 Web Bluetooth 的独立浏览器。
+- **历史数据**：保存在当前浏览器的 localStorage；可从历史面板导出备份。
+- **局面编辑器**：支持涂色与合法性校验，AI 局面求解尚未接入。
 
 ## 📜 API 文档
 
@@ -270,10 +287,6 @@ __cubemindGanDiagnostics.stop()
   "encouragement": "稳扎稳打，突破在即！"
 }
 ```
-
-### `GET /api/solves` / `POST /api/solves` / `DELETE /api/solves/:id`
-
-解法历史 CRUD（持久化到 `src-backend/data/history.json`）
 
 ### `GET /api/health`
 

@@ -1,6 +1,6 @@
 /**
  * build.mjs
- * esbuild 构建脚本：将 src-frontend/main.ts 打包为 dist/bundle.js
+ * esbuild 构建脚本：bootstrap.ts 打包为 bundle.js / bundle.css，并构建 Cross worker。
  *
  * 使用：node build.mjs
  */
@@ -29,7 +29,7 @@ await esbuild.build({
 copyFileSync("index.html", "dist/index.html");
 const bundleVersion = Date.now();
 const distIndex = readFileSync("dist/index.html", "utf8");
-writeFileSync("dist/index.html", distIndex.replace('src="bundle.js"', `src="bundle.js?v=${bundleVersion}"`));
+writeFileSync("dist/index.html", distIndex.replace(/(bundle\.(?:js|css))"/g, `$1?v=${bundleVersion}"`));
 
 console.log("✓ 前端构建完成 → dist/bundle.js");
 console.log("✓ 启动后端: npm run server");

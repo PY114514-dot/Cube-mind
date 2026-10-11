@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+> ⚠️ **本文档为早期历史文档（V0.1 阶段），多处已过时**：API_KEY 已 env 化、魔域已支持、3D 为自研 CSS（非 Three.js）、GitHub Pages 部署已弃用（改本地 `npm run serve`）。
+> 权威工作手册见 **agents.md**；下一版计划见 `doc/05-roadmap/next-version-case-level-coaching.md`。
+
 > CubeMind（暂定名）—— 面向CFOP竞速玩家的本地化AI解法分析助手
 
 ## 🎯 项目一句话

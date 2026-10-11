@@ -33,7 +33,16 @@ export interface CubeMove {
   moveCnt: number;
 }
 
+/** 协议明确知道无法恢复的动作缺口；用于隔离 CFOP/AI，但不否定实体成绩。 */
+export interface CubeMoveStreamGap {
+  missing: number;
+  previousMoveCnt: number;
+  nextMoveCnt: number;
+}
+
 export type CubeMoveCallback = (move: CubeMove) => void;
+export type CubeMoveStreamGapCallback = (gap: CubeMoveStreamGap) => void;
+export type CubeErrorCallback = (message: string) => void;
 export type CubeGyroCallback = (quaternion: CubeQuaternion) => void;
 export type CubePacketCallback = (event: CubePacketEvent) => void;
 export type CubeConnectCallback = () => void;
@@ -63,6 +72,12 @@ export interface CubeDriver {
   /** 注册 move 回调（统一 CubeMove 格式） */
   onMove(cb: CubeMoveCallback): void;
 
+  /** 注册动作流最终缺口回调；未能确认时品牌驱动可不触发。 */
+  onMoveStreamGap?(cb: CubeMoveStreamGapCallback): void;
+
+  /** 可恢复或需要断开的设备错误，供连接控制器显示给用户。 */
+  onError?(cb: CubeErrorCallback): void;
+
   /** 注册姿态回调（不支持陀螺仪的品牌可留空实现） */
   onGyro(cb: CubeGyroCallback): void;
 
@@ -81,10 +96,15 @@ export interface CubeDriver {
   /** 主动读取设备当前 54 位 facelet；协议不支持时返回 null。 */
   requestFacelets?(): Promise<string | null>;
 
+  /** 无可验证实体局面时，连续动作流可否作为计时成绩的保守兜底（不授予 CFOP/AI）。 */
+  allowsUnverifiedMoveScore?(): boolean;
+
   /** 开始仅存于内存的 BLE 通知录制，供缺步问题复盘。 */
   startPacketRecording?(): void;
   stopPacketRecording?(): void;
   exportPacketRecording?(): string | null;
+  /** 导出可固化为回放测试的匿名已解密 fixture。 */
+  exportReplayFixture?(): string | null;
 
   /** 获取设备广播名 */
   getName(): string | null;

@@ -8,10 +8,18 @@ const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
 export const analyzeRouter = Router();
 
-function isRateLimited(clientId: string, now: number): boolean {
+/** 清理已过期的限流条目，防止 Map 无限增长 */
+function purgeExpiredRecords(now: number): void {
   for (const [id, record] of requestCounts) {
     if (record.resetAt <= now) requestCounts.delete(id);
   }
+}
+
+// 每 60 秒主动清理一次过期条目；unref 避免阻止进程退出
+setInterval(() => purgeExpiredRecords(Date.now()), WINDOW_MS).unref();
+
+function isRateLimited(clientId: string, now: number): boolean {
+  purgeExpiredRecords(now);
   const current = requestCounts.get(clientId);
   if (!current || current.resetAt <= now) {
     requestCounts.set(clientId, { count: 1, resetAt: now + WINDOW_MS });
@@ -57,14 +65,19 @@ analyzeRouter.post("/analyze", async (req: Request, res: Response) => {
     "X-Accel-Buffering": "no",
   });
 
-  // 客户端断开时标记，避免继续写入
+  // 客户端断开时：1) 标记避免继续写入 SSE；2) AbortController 取消上游 DeepSeek 请求
   let aborted = false;
-  req.on("close", () => { aborted = true; });
+  const abortController = new AbortController();
+  res.on("close", () => {
+    if (res.writableEnded) return;
+    aborted = true;
+    abortController.abort();
+  });
 
   try {
     const result = await analyzeStream(input, (delta) => {
       if (!aborted) sseWrite(res, { type: "chunk", text: delta });
-    });
+    }, abortController.signal);
     if (!aborted) sseWrite(res, { type: "done", result });
   } catch (error) {
     console.error("[analyze] 流式分析失败:", error);

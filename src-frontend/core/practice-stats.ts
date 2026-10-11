@@ -1,4 +1,5 @@
 import { formatWcaAverage } from "./wca-average.ts";
+import type { AnalysisInput } from "../../src-shared/analysis-types.ts";
 
 export type PracticeKind = "formula" | "cross" | "f2l" | "cross-f2l";
 
@@ -91,4 +92,46 @@ export function selectPracticeFormula<T extends { id: string; difficulty: number
     if (point <= 0) return item.formula;
   }
   return weighted[weighted.length - 1].formula;
+}
+
+export type AiPracticeSummaryEntry = NonNullable<AnalysisInput["practiceSummary"]>[number];
+
+const MAX_AI_PRACTICE_ENTRIES = 30;
+
+/**
+ * 聚合练习记录为 AI 可读的掌握度摘要（按练习次数降序，最多 30 条）。
+ * 公式元信息（名称/阶段）由调用方提供，保持本模块不依赖公式库。
+ */
+export function buildAiPracticeSummary(
+  records: PracticeRecord[],
+  getFormulaMeta: (formulaId: string) => { name: string; category: AiPracticeSummaryEntry["category"] } | undefined,
+): AiPracticeSummaryEntry[] {
+  const byId = new Map<string, PracticeRecord[]>();
+  for (const record of records) {
+    if (record.practiceKind !== "formula" || !record.formulaId) continue;
+    const list = byId.get(record.formulaId);
+    if (list) list.push(record);
+    else byId.set(record.formulaId, [record]);
+  }
+  const entries: AiPracticeSummaryEntry[] = [];
+  for (const [formulaId, list] of byId) {
+    const meta = getFormulaMeta(formulaId);
+    if (!meta) continue;
+    const successes = list.filter((record) => record.outcome === "success");
+    const durations = successes.map((record) => record.duration);
+    const recognition = successes.flatMap((record) => typeof record.recognitionDuration === "number" ? [record.recognitionDuration] : []);
+    const execution = successes.flatMap((record) => typeof record.executionDuration === "number" ? [record.executionDuration] : []);
+    entries.push({
+      formulaId,
+      name: meta.name,
+      category: meta.category,
+      attempts: list.length,
+      successes: successes.length,
+      successRate: list.length === 0 ? 0 : successes.length / list.length,
+      averageDuration: durations.length > 0 ? average(durations) : null,
+      averageRecognitionDuration: recognition.length > 0 ? average(recognition) : null,
+      averageExecutionDuration: execution.length > 0 ? average(execution) : null,
+    });
+  }
+  return entries.sort((left, right) => right.attempts - left.attempts).slice(0, MAX_AI_PRACTICE_ENTRIES);
 }

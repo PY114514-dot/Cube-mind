@@ -26,8 +26,8 @@ function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-/** 生成单次打乱（默认 20 步，符合 WCA 标准） */
-export function scramble333(length: number = 20): string {
+/** 生成单次打乱的 move index 数组（默认 20 步，符合 WCA 标准） */
+export function scramble333Moves(length: number = 20): number[] {
   const moves: number[] = [];
 
   for (let i = 0; i < length; i++) {
@@ -66,8 +66,12 @@ export function scramble333(length: number = 20): string {
     moves.push(face * 3 + power);
   }
 
-  // 转换为字符串
-  return moves.map((idx) => {
+  return moves;
+}
+
+/** 生成单次打乱（默认 20 步，符合 WCA 标准） */
+export function scramble333(length: number = 20): string {
+  return scramble333Moves(length).map((idx) => {
     const face = Math.floor(idx / 3);
     const power = idx % 3;
     return FACE_NAMES.charAt(face) + POWER_SUFFIX[power];

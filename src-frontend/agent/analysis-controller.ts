@@ -1,7 +1,7 @@
 import { analyzeStreamWithDeepSeek } from "./deepseek.ts";
 import type { AnalysisInput, AnalysisResult } from "./types.ts";
-import { createHistoryAnalysisInput } from "./analysis-input.ts";
-import { isSolveEligible } from "../core/solve-validation.ts";
+import { createHistoryAnalysisInput, getAnalysisEligibleSolves } from "./analysis-input.ts";
+import { MAX_ANALYSIS_SOLVES } from "../../src-shared/analysis-coaching.ts";
 import { getAnalysisSampleNotice } from "../core/data-quality.ts";
 
 export interface AnalysisControllerElements {
@@ -11,6 +11,8 @@ export interface AnalysisControllerElements {
   btnRunAnalysis: HTMLButtonElement;
   agentModal: HTMLDivElement;
   agentOutput: HTMLDivElement;
+  /** 抽屉背后的轻遮罩，与抽屉同步开合 */
+  agentBackdrop: HTMLElement;
 }
 
 export interface AnalysisControllerOptions {
@@ -29,7 +31,7 @@ export interface AnalysisControllerOptions {
 export function bindAnalysisController(options: AnalysisControllerOptions): void {
   const { elements, getRecords, renderResult, log, onBeforeAnalyze, onAfterAnalyze, onModalOpen } = options;
   elements.btnOpenAgent.onclick = () => {
-    const validCount = getRecords().filter((solve) => solve.analysisEligible ?? isSolveEligible(solve.qualityStatus)).length;
+    const validCount = Math.min(MAX_ANALYSIS_SOLVES, getAnalysisEligibleSolves(getRecords()).length);
     elements.analysisCount.max = String(Math.max(1, validCount));
     elements.analysisCount.value = String(Math.min(12, validCount || 1));
     const notice = getAnalysisSampleNotice(validCount);
@@ -37,10 +39,11 @@ export function bindAnalysisController(options: AnalysisControllerOptions): void
     // 根据样本数量应用不同的样式
     elements.analysisSampleStatus.className = validCount <= 0 ? "sample-notice error" : validCount < 5 ? "sample-notice warning" : "sample-notice info";
     elements.agentModal.classList.add("open");
+    elements.agentBackdrop.classList.add("open");
     if (onModalOpen) onModalOpen();
   };
   elements.btnRunAnalysis.onclick = async () => {
-    const validCount = getRecords().filter((solve) => solve.analysisEligible ?? isSolveEligible(solve.qualityStatus)).length;
+    const validCount = Math.min(MAX_ANALYSIS_SOLVES, getAnalysisEligibleSolves(getRecords()).length);
     const scope = Math.min(validCount, Math.max(1, Math.floor(Number(elements.analysisCount.value)) || 1));
     const input = createHistoryAnalysisInput(getRecords(), scope);
     if (!input) {
@@ -51,17 +54,26 @@ export function bindAnalysisController(options: AnalysisControllerOptions): void
     elements.analysisCount.value = String(scope);
     elements.btnRunAnalysis.disabled = true;
     elements.btnRunAnalysis.textContent = "分析中…";
-    // 流式渲染：脉冲动画 + 逐步增长的原始文本
+    // 状态动画：脉冲圆点 + 随生成进度推进的阶段文案，不回显原始流式文本。
+    const stageMessages = [
+      `正在读取最近 ${scope} 把成绩…`,
+      "正在拆分四阶段用时…",
+      "正在识别瓶颈与弱项…",
+      "正在生成训练建议与公式指派…",
+    ];
     elements.agentOutput.innerHTML = `
       <div class="stream-container">
-        <div class="stream-header"><span class="stream-dot"></span>AI 教练正在分析最近 ${scope} 把…</div>
-        <pre class="stream-raw"></pre>
+        <div class="stream-header" aria-live="polite"><span class="stream-dot"></span><span class="stream-status">${stageMessages[0]}</span></div>
       </div>`;
-    const streamRaw = elements.agentOutput.querySelector(".stream-raw") as HTMLElement | null;
+    const streamStatus = elements.agentOutput.querySelector(".stream-status") as HTMLElement | null;
     log(`调用 DeepSeek（流式）：分析最近 ${scope} 把`);
     try {
       const result = await analyzeStreamWithDeepSeek(input, ({ accumulated }) => {
-        if (streamRaw) streamRaw.textContent = accumulated;
+        if (streamStatus) {
+          // 生成量越大阶段越靠后；最后一档保持到完成，让用户感知分析已接近收尾。
+          const stageIndex = Math.min(stageMessages.length - 1, Math.floor(accumulated.length / 120));
+          streamStatus.textContent = stageMessages[stageIndex];
+        }
       });
       renderResult(result, input);
       if (onAfterAnalyze) onAfterAnalyze(result, input);
@@ -73,4 +85,20 @@ export function bindAnalysisController(options: AnalysisControllerOptions): void
       elements.btnRunAnalysis.textContent = "开始分析";
     }
   };
+}
+
+/** 绑定 AI 教练抽屉内的标签页切换，返回供外部调用的切换函数（如局面提问后切回复盘页）。 */
+export function bindAgentTabs(agentModal: HTMLElement): (tabName: "analysis" | "editor") => void {
+  const tabs = Array.from(agentModal.querySelectorAll<HTMLButtonElement>(".agent-tab"));
+  const panels = Array.from(agentModal.querySelectorAll<HTMLElement>("[data-agent-panel]"));
+  const showTab = (tabName: "analysis" | "editor"): void => {
+    tabs.forEach((tab) => {
+      const active = tab.dataset.agentTab === tabName;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+    });
+    panels.forEach((panel) => { panel.hidden = panel.dataset.agentPanel !== tabName; });
+  };
+  tabs.forEach((tab) => tab.addEventListener("click", () => showTab((tab.dataset.agentTab ?? "analysis") as "analysis" | "editor")));
+  return showTab;
 }

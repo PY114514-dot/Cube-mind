@@ -2,40 +2,13 @@
  * agent/deepseek.ts
  * 浏览器端 AI 分析客户端（API 调用走后端，API_KEY 隔离）
  *
- * 两种模式：
- * - analyzeWithDeepSeek：一次性 JSON 响应（兼容旧逻辑）
- * - analyzeStreamWithDeepSeek：SSE 流式，逐 token 回调 + 最终结构化结果
+ * SSE 流式，逐 token 回调 + 最终结构化结果
  */
 
 import type { AnalysisInput, AnalysisResult } from "./types.ts";
 import { localAnalysisFallback } from "../../src-shared/local-analysis-fallback.ts";
 
 const REQUEST_TIMEOUT_MS = 25_000;
-
-/** 调用后端 /api/analyze（非流式，兼容保留） */
-export async function analyzeWithDeepSeek(input: AnalysisInput): Promise<AnalysisResult> {
-  const controller = new AbortController();
-  const timeout = globalThis.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-      signal: controller.signal,
-    });
-    if (response.status === 429) {
-      throw new Error("请求过于频繁，请稍后再试");
-    }
-    if (!response.ok) throw new Error(`后端错误: ${response.status}`);
-    return await response.json();
-  } catch (err) {
-    if (err instanceof Error && err.message.includes("频繁")) throw err;
-    console.error("[frontend] 调用后端失败，使用本地 fallback:", err);
-    return localAnalysisFallback(input);
-  } finally {
-    globalThis.clearTimeout(timeout);
-  }
-}
 
 export interface StreamProgress {
   /** 到目前为止累积的原始文本 */
@@ -114,6 +87,3 @@ export async function analyzeStreamWithDeepSeek(
     globalThis.clearTimeout(timeout);
   }
 }
-
-/** 本地规则引擎 fallback */
-export const localFallback = localAnalysisFallback;

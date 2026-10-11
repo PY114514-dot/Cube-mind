@@ -1,5 +1,6 @@
-import { scramble333 } from "../scramble/scramble-333.ts";
-import { getCrossDistanceForScramble } from "./cross-solver.ts";
+import { scramble333Moves } from "../scramble/scramble-333.ts";
+import { moveToStr } from "../utils/mathlib.ts";
+import { createCrossDistanceScorer } from "./cross-solver.ts";
 
 export interface CrossScrambleOptions {
   targetFace?: string;
@@ -17,10 +18,15 @@ function findExactLengthScramble(
   targetFace: string,
   scrambleLength: number,
   maxAttempts: number,
-): string | null {
+): number[] | null {
+  // 计分器内部持有打包十字状态：每次抽样只做 20 次数位查表 + 1 次距离查询，
+  // 不再为每次抽样解析字符串并展开完整魔方。
+  const scorer = createCrossDistanceScorer(targetFace);
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const scramble = scramble333(scrambleLength);
-    if (getCrossDistanceForScramble(scramble, targetFace) === targetSteps) return scramble;
+    const moves = scramble333Moves(scrambleLength);
+    scorer.reset();
+    for (const move of moves) scorer.applyMove(move);
+    if (scorer.distance() === targetSteps) return moves;
   }
   return null;
 }
@@ -43,6 +49,6 @@ export function scrambleWithCrossSteps(targetSteps: number, options: CrossScramb
   }
 
   const exact = findExactLengthScramble(targetSteps, targetFace, length, maxAttempts);
-  if (exact) return exact;
+  if (exact) return exact.map(moveToStr).join(" ");
   throw new Error(`[cross-scramble] ${targetSteps} 步 Cross 在 ${maxAttempts} 次 WCA 20 步抽样内未找到，请重新生成`);
 }

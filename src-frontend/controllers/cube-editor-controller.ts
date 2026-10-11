@@ -6,6 +6,7 @@ import {
   getPaintedStickerCount,
   setCubeSticker,
   toFaceletString,
+  toVisualizerFacelets,
   type CubeColor,
   type CubeEditorState,
   type CubeSticker,
@@ -46,6 +47,8 @@ export class CubeEditorController {
       this.render();
     });
     this.preview = new CubeVisualizer(elements.cubeEditorPreview, {
+      role: "editor",
+      interactive: true,
       initialRotationX: -24,
       initialRotationY: -36,
       onStickerClick: (faceletIndex) => {
@@ -72,8 +75,8 @@ export class CubeEditorController {
       ...CUBE_COLORS.map((color) => `<button type="button" class="cube-palette-color ${this.selectedColor === color ? "selected" : ""}" data-cube-color="${color}" data-color="${color}" aria-label="选择${COLOR_LABELS[color]}色"></button>`),
       `<button type="button" class="cube-palette-clear ${this.selectedColor === null ? "selected" : ""}" data-cube-color="clear">擦除</button>`,
     ].join("");
-    this.preview?.setFacelets(toFaceletString(this.state));
+    this.preview?.setFacelets(toVisualizerFacelets(this.state));
     const painted = getPaintedStickerCount(this.state);
-    elements.cubeEditorStatus.textContent = painted === 54 ? "局面已填满，可发送给 Agent 进行校验与求解。" : `已涂 ${painted}/54 格；中心色已固定，未涂部分保持黑色。`;
+    elements.cubeEditorStatus.textContent = painted === 54 ? "局面已填满，可以校验颜色、朝向与可达性。" : `已涂 ${painted}/54 格；中心色已固定，未涂部分保持黑色。`;
   }
 }

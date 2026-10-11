@@ -1,5 +1,15 @@
+import type { TrainingProfileEntry } from "./training-plan-types.ts";
+
 export interface AnalysisInput {
+  /** 数据 schema 版本号，用于 localStorage 迁移；缺失视为 v0 */
+  dataVersion?: number;
   analysisScope?: number;
+  /** 本次选中的可信常规复原，顺序同时用于证据引用与回放定位。 */
+  analysisSolves?: AnalysisSolve[];
+  /** 所选窗口之前最多 30 把常规复原的个人基准，不与本次样本重叠。 */
+  baseline?: AnalysisBaseline;
+  /** 专项训练前后同 CASE 的实战表现，供教练调整训练内容。 */
+  caseTransfer?: CaseTransferProgress[];
   completedAt?: number;
   deviceName?: string;
   deviceId?: string;
@@ -28,17 +38,12 @@ export interface AnalysisInput {
   f2lMoves: number;
   ollMoves: number;
   pllMoves: number;
-  recentSolves?: Array<{
-    totalDuration: number;
-    crossDuration: number;
-    f2lDuration: number;
-    ollDuration: number;
-    pllDuration: number;
-  }>;
   qualityStatus?: "valid" | "incomplete" | "invalid";
   qualityAnomalies?: string[];
   /** 实体魔方状态回读结果；用于判定成绩能否进入 PB/AO。 */
   physicalState?: "confirmed-solved" | "confirmed-unsolved" | "unavailable";
+  /** 持久化的统一可信度结论；旧记录缺失时由 qualityStatus/physicalState 兼容推导。 */
+  trustState?: "analysis-ready" | "score-only" | "rejected";
   /** 动作流是否足以支持 CFOP、停顿和 Agent 分析。 */
   analysisEligible?: boolean;
   penalty?: "none" | "plus2" | "dnf";
@@ -46,13 +51,19 @@ export interface AnalysisInput {
   f2lSlots?: Array<{
     slot: "FR" | "FL" | "BL" | "BR";
     completionOrder?: number;
+    completedAtMove?: number;
     duration?: number;
     moves?: number;
+    moveSequence?: string[];
     pauseCount: number;
     maxGap: number;
     breakCount: number;
     repairCount: number;
     completedWithCross: boolean;
+    caseId?: string;
+    caseFamily?: string;
+    caseConfidence?: "exact" | "family" | "unknown";
+    caseReason?: string;
   }>;
   stepReview?: {
     pauseThreshold: number;
@@ -60,10 +71,8 @@ export interface AnalysisInput {
     maxGap: number;
     pauses: Array<{ index: number; move: string; gap: number; stage: string; reason: string }>;
   };
-  recentStepReviews?: Array<{
-    pauses: Array<{ move: string; gap: number; stage: string }>;
-    maxGap: number;
-  }>;
+  /** 逐 case 识别证据流：本把命中的 F2L/OLL/PLL case 与标准公式的步数、停顿偏差。 */
+  caseEvents?: CaseEvent[];
   /** 会话级上下文：最近几把的瓶颈摘要，用于趋势判断 */
   sessionContext?: Array<{
     completedAt: number;
@@ -71,6 +80,22 @@ export interface AnalysisInput {
     bottleneckStage: string;
     topIssue: string;
   }>;
+  /** 公式库练习掌握度摘要（练习次数/成功率/平均识别与执行），供 AI 给出有练习证据的建议 */
+  practiceSummary?: Array<{
+    formulaId: string;
+    name: string;
+    category: "F2L" | "OLL" | "PLL";
+    attempts: number;
+    successes: number;
+    successRate: number;
+    averageDuration: number | null;
+    averageRecognitionDuration: number | null;
+    averageExecutionDuration: number | null;
+  }>;
+  /** 历史公式指派的效果回流：每个已指派公式自上次指派以来的练习表现 */
+  assignmentProgress?: AssignmentProgressEntry[];
+  /** 纵向训练档案（跨天公式练习时间线）；前端同步后注入，后端只读渲染 */
+  trainingProfile?: TrainingProfileEntry[];
 }
 
 export interface AnalysisIssue {
@@ -78,6 +103,81 @@ export interface AnalysisIssue {
   severity: "high" | "medium" | "low";
   description: string;
   evidence: string;
+  /** 必须对应本次确定性证据目录；模型不能自行指定回放步数。 */
+  evidenceId?: string;
+}
+
+export type AnalysisStage = "Cross" | "F2L" | "OLL" | "PLL";
+
+export interface AnalysisSolve extends Pick<AnalysisInput,
+  "totalDuration" | "crossDuration" | "f2lDuration" | "ollDuration" | "pllDuration"
+  | "crossMoves" | "f2lMoves" | "ollMoves" | "pllMoves" | "scramble" | "moves"
+  | "moveCount" | "tps" | "f2lSlots" | "stepReview" | "caseEvents" | "moveGaps"> {}
+
+export interface StageBaseline {
+  stage: AnalysisStage;
+  sampleCount: number;
+  duration: number;
+}
+
+export interface CaseBaseline {
+  stage: CaseEvent["stage"];
+  caseId: string;
+  sampleCount: number;
+  recognitionPauseMs: number;
+  execMoves: number;
+}
+
+export interface AnalysisBaseline {
+  sampleCount: number;
+  stages: StageBaseline[];
+  cases: CaseBaseline[];
+}
+
+export interface CaseTransferMetrics {
+  caseHits: number;
+  averageRecognitionPauseMs: number | null;
+  averageMoveDelta: number | null;
+}
+
+export interface CaseTransferProgress {
+  formulaId: string;
+  stage: CaseEvent["stage"];
+  normalSolveCount: number;
+  targetSolveCount: number;
+  before: CaseTransferMetrics;
+  after: CaseTransferMetrics;
+  readyForComparison: boolean;
+}
+
+/** 单次解法中命中的一个训练 case 的执行证据（case 级识别与 AI 教练闭环的输入单元）。 */
+export interface CaseEvent {
+  stage: "F2L" | "OLL" | "PLL";
+  /** 公式库公式 id（如 F2L-24 / OLL-05 / PLL-T） */
+  caseId: string;
+  /** 该 case 首个 move 前的停顿（识别停顿，毫秒） */
+  recognitionPauseMs: number;
+  /** 实际执行步数 */
+  execMoves: number;
+  /** 公式库标准步数 */
+  expectedMoves: number;
+  /** 实际步数 - 标准步数 */
+  moveDelta: number;
+  /** 原始动作流的零基半开区间；起点局面在 startMoveIndex 步执行后。 */
+  startMoveIndex?: number;
+  endMoveIndex?: number;
+}
+
+/** 一次公式级指派自上次指派以来的练习效果（训练闭环的回流输入单元）。 */
+export interface AssignmentProgressEntry {
+  formulaId: string;
+  stage: "F2L" | "OLL" | "PLL";
+  /** 最近一次指派时间（毫秒时间戳） */
+  lastAssignedAt: number;
+  /** 自上次指派以来的练习次数 */
+  practiceAttempts: number;
+  /** 自上次指派以来的练习成功率；期间无练习记录为 null */
+  practiceSuccessRate: number | null;
 }
 
 export interface AnalysisDrill {
@@ -103,4 +203,16 @@ export interface AnalysisResult {
   nextFocus?: string;
   /** 会话趋势判断（一句话，如「F2L 连续 3 把为瓶颈，BR 槽位持续偏慢」） */
   trend?: string;
+  /** 结构化公式指派：复盘结论直接映射到公式库具体公式，打通「复盘 → 练习」闭环 */
+  focusFormulas?: Array<{
+    stage: "F2L" | "OLL" | "PLL";
+    /** 公式库公式 id（如 F2L-24）；缺失时表示阶段级指派 */
+    formulaId?: string;
+    /** 一句话指派理由（引用练习数据或本把数据） */
+    reason: string;
+    /** 上次指派时间（毫秒时间戳）；仅当该公式此前被指派过，由客户端回流填充 */
+    lastAssignedAt?: number;
+    /** 上次指派后的练习成功率；期间无练习记录为 undefined */
+    practiceSuccessRate?: number;
+  }>;
 }

@@ -107,4 +107,17 @@ export class BlePacketRecorder {
     const fixture: BlePacketFixture = { schemaVersion: 1, packets: this.getRecords() };
     return JSON.stringify(fixture, null, 2);
   }
+
+  /** 导出可提交为回放 fixture 的匿名版本：只保留协议与已解密字节，时间从零开始。 */
+  exportReplayFixture(): string {
+    const records = this.getRecords();
+    const startedAt = records[0]?.receivedAt ?? 0;
+    const packets = records.map((record) => ({
+      protocol: record.protocol,
+      receivedAt: record.receivedAt - startedAt,
+      bytes: record.decodedBytes ?? record.bytes,
+      ...(record.mode === undefined ? {} : { mode: record.mode }),
+    }));
+    return JSON.stringify({ schemaVersion: 1, packets }, null, 2);
+  }
 }

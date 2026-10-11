@@ -44,7 +44,7 @@ export class HistoryDetailController {
       ${showSolution && solve.scramble && solve.moves?.length ? '<div class="history-replay" data-history-replay></div>' : ""}
     `;
     const replayRoot = this.elements.detail.querySelector<HTMLElement>("[data-history-replay]");
-    if (replayRoot && solve.moves) this.replayPlayer = new SolveReplayPlayer(replayRoot, solve.scramble ?? "", solve.moves);
+    if (replayRoot && solve.moves) this.replayPlayer = new SolveReplayPlayer(replayRoot, solve);
     this.elements.retryButton.disabled = !solve.scramble;
     this.elements.solutionButton.disabled = !solve.moves || solve.moves.length === 0;
   }

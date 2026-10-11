@@ -38,7 +38,8 @@ export function loadSessionContext(): SessionContext {
       return { entries: [], lastActiveAt: Date.now() };
     }
     return { entries: ctx.entries.slice(-MAX_ENTRIES), lastActiveAt: ctx.lastActiveAt };
-  } catch {
+  } catch (error) {
+    console.error("[session-context] 读取失败，回退为新会话:", error);
     return { entries: [], lastActiveAt: Date.now() };
   }
 }
@@ -61,7 +62,8 @@ export function clearSession(): void {
 function persist(ctx: SessionContext): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ctx));
-  } catch {
-    // QuotaExceeded 时静默放弃，不影响主流程
+  } catch (error) {
+    // QuotaExceeded 时放弃写入，但错误必须可见（4.4）
+    console.error("[session-context] 持久化失败:", error);
   }
 }

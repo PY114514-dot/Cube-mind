@@ -47,3 +47,27 @@ export interface IssueAggregation {
   /** 样本总数 */
   sampleSize: number;
 }
+
+/**
+ * 纵向训练档案（cubemind:training-profile）的时间线单元：
+ * 单个公式在单个自然日的练习聚合，跨会话累积后供 AGENT 判断长期趋势。
+ */
+export interface TrainingProfileEntry {
+  formulaId: string;
+  stage: "F2L" | "OLL" | "PLL";
+  /** 本地日期键 YYYY-MM-DD（按天聚合，跨会话可直接比较） */
+  dateKey: string;
+  /** 当日练习次数 */
+  attempts: number;
+  /** 当日成功次数 */
+  successes: number;
+  /** 当日成功记录的平均执行用时（毫秒）；无成功记录为 null */
+  avgExecutionMs: number | null;
+  /** 当日最近一次练习时间戳（毫秒） */
+  lastPracticedAt: number;
+}
+
+/** 纵向训练档案：跨天累积的公式练习时间线，前端组装、后端只读。 */
+export interface TrainingProfile {
+  entries: TrainingProfileEntry[];
+}

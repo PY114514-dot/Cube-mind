@@ -24,7 +24,8 @@ function safeParse<T>(raw: string | null): T | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;
-  } catch {
+  } catch (error) {
+    console.error("[training-plan-store] JSON 解析失败:", error);
     return null;
   }
 }

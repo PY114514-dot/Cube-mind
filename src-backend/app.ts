@@ -3,36 +3,33 @@ import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeRouter } from "./routes/analyze.ts";
-import { solvesRouter } from "./routes/solves.ts";
 import { diagnosticsRouter } from "./routes/diagnostics.ts";
 import { formulaAlternativesRouter } from "./routes/formula-alternatives.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIST = join(__dirname, "..", "dist");
-const ALLOWED_ORIGINS = new Set((process.env.ALLOWED_ORIGINS ?? "http://localhost:8080,http://127.0.0.1:8080")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean));
 
 /** 创建 HTTP 应用；监听端口由 server.ts 负责，便于集成测试复用。 */
 export function createApp(): express.Express {
   const app = express();
-  app.use(express.json({ limit: "16kb" }));
+  const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS ?? "")
+    .split(",").map((origin) => origin.trim()).filter(Boolean));
+  app.use(express.json({ limit: "256kb" }));
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     const origin = req.headers.origin;
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    const sameOrigin = `${req.protocol}://${req.get("host")}`;
+    if (origin && origin !== sameOrigin && !allowedOrigins.has(origin)) {
       return res.status(403).json({ error: "不允许的请求来源。" });
     }
     if (origin) res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Headers", "Content-Type");
-    res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     if (req.method === "OPTIONS") return res.sendStatus(200);
     next();
   });
 
   app.use("/api", analyzeRouter);
-  app.use("/api", solvesRouter);
   app.use("/api", diagnosticsRouter);
   app.use("/api", formulaAlternativesRouter);
   app.get("/api/health", (_req: Request, res: Response) => {
@@ -43,7 +40,7 @@ export function createApp(): express.Express {
     app.use(express.static(FRONTEND_DIST, {
       // Demo 每次构建都可能替换同名 bundle；禁止浏览器继续使用旧脚本。
       setHeaders: (res, path) => {
-        if (path.endsWith(".html") || path.endsWith("bundle.js")) res.setHeader("Cache-Control", "no-store");
+        if (/\.(?:html|js|css)$/.test(path)) res.setHeader("Cache-Control", "no-store");
       },
     }));
     app.get("*", (_req: Request, res: Response) => {

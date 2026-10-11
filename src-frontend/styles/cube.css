@@ -1,0 +1,73 @@
+/* 3D 魔方区 */
+
+
+.cube-visualizer {
+  position: relative;
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 38%, #fff 0%, #f8fafc 48%, #e2e8f0 100%);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  overflow: hidden;
+  perspective: 1400px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cube-visualizer.is-dragging { cursor: grabbing; }
+.cube-scene { position: relative; width: 252px; height: 252px; display: grid; place-items: center; transform: translateY(4px); transform-style: preserve-3d; }
+.cube-scene::after { content: ""; position: absolute; width: 174px; height: 26px; left: 39px; bottom: 18px; border-radius: 50%; background: radial-gradient(ellipse, rgba(9,13,20,.30) 0%, rgba(9,13,20,.12) 48%, transparent 74%); filter: blur(8px); transform: rotateX(68deg); pointer-events: none; }
+.cube3d { width: 164px; height: 164px; position: relative; transform-style: preserve-3d; transition: transform .16s ease-out; will-change: transform; }
+.cube3d.is-gyro-following { transition: none; }
+/* 内核只负责承接真实转层时可见的内部空间；外部结构完全由 cubie foundation 构成。 */
+.cube-inner-core { position: absolute; left: 50%; top: 50%; width: 138px; height: 138px; margin: -69px 0 0 -69px; transform-style: preserve-3d; pointer-events: none; }
+.cube-inner-core-face { position: absolute; inset: 0; border-radius: 20px; background: linear-gradient(145deg, #3d424a, #26292f 44%, #181b20 82%); box-shadow: inset 3px 3px 4px rgba(255,255,255,.06), inset -5px -5px 6px rgba(0,0,0,.55); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.cube-inner-core-face-u { transform: rotateX(90deg) translateZ(60px); }
+.cube-inner-core-face-r { transform: rotateY(90deg) translateZ(60px); }
+.cube-inner-core-face-f { transform: translateZ(60px); }
+.cube-inner-core-face-d { transform: rotateX(-90deg) translateZ(60px); }
+.cube-inner-core-face-l { transform: rotateY(-90deg) translateZ(60px); }
+.cube-inner-core-face-b { transform: rotateY(180deg) translateZ(60px); }
+.cube-cubie, .cube-turn-layer { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; transform-style: preserve-3d; }
+.cube-turn-layer { inset: 0; width: auto; height: auto; left: 0; top: 0; margin: 0; will-change: transform; }
+/* 先放置完整黑色 cubie foundation，再叠圆角面板。它是连续的实体底座，不会在圆角交界露出白色舞台。 */
+.cube-cubie-foundation-face { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 9px; background: #383d44; box-shadow: inset 0 1px 1px rgba(255,255,255,.04), inset 0 -1px 2px rgba(0,0,0,.35); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.cube-cubie-foundation-face-u { transform: rotateX(90deg) translateZ(22px); }
+.cube-cubie-foundation-face-r { transform: rotateY(90deg) translateZ(22px); }
+.cube-cubie-foundation-face-f { transform: translateZ(22px); }
+.cube-cubie-foundation-face-d { transform: rotateX(-90deg) translateZ(22px); }
+.cube-cubie-foundation-face-l { transform: rotateY(-90deg) translateZ(22px); }
+.cube-cubie-foundation-face-b { transform: rotateY(180deg) translateZ(22px); }
+/* 黑色塑料壳 + 收小的色块：色块四周留出均匀的 1.5px 缝隙，
+   相邻色块之间的接缝约 3px，透出下方的黑色底座，呈现真实魔方的块间缝隙。 */
+.cube-cubie-face { position: absolute; left: 50%; top: 50%; width: 47px; height: 47px; margin: -23.5px 0 0 -23.5px; padding: 0; overflow: hidden; border: 1px solid rgba(0,0,0,.12); border-radius: 6px; background: linear-gradient(140deg, rgba(255,255,255,.20) 0%, rgba(255,255,255,.035) 30%, transparent 58%), var(--cubie-color, #383d44); box-shadow: inset 1px 2px 2px rgba(255,255,255,.16); transform-style: preserve-3d; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+/* 保留透明命中层供局面编辑器点击，视觉上不再形成第二层“贴纸”。 */
+.cube-cubie-face .cube-sticker { display: block; width: 100%; height: 100%; opacity: 0; transform: translateZ(1px); }
+.cube-cubie-face-u { transform: rotateX(90deg) translateZ(25px); }
+.cube-cubie-face-r { transform: rotateY(90deg) translateZ(25px); }
+.cube-cubie-face-f { transform: translateZ(25px); }
+.cube-cubie-face-d { transform: rotateX(-90deg) translateZ(25px); }
+.cube-cubie-face-l { transform: rotateY(-90deg) translateZ(25px); }
+.cube-cubie-face-b { transform: rotateY(180deg) translateZ(25px); }
+/* 竞速魔方（GAN/魔域）中心盖：无环形盖缝、无品牌位凸点，中心盖与普通色块完全一致（2026-08-20 用户要求删除圆环）。 */
+
+.cube-cubie-face .cube-sticker { border: 0; background: transparent !important; box-shadow: none; }
+/* 设备跟随是连续重绘的热路径：保留颜色和结构，临时移除会放大合成成本的滤镜、渐变和多重阴影。 */
+.cube-visualizer.is-gyro-following .cube-scene::after { opacity: .35; filter: none; }
+.cube3d.is-gyro-following .cube-cubie-foundation-face { background: #383d44; box-shadow: none; }
+.cube3d.is-gyro-following .cube-cubie-face { background: var(--cubie-color, #151515); box-shadow: none; }
+.cube3d.is-gyro-following .cube-cubie-face::before, .cube3d.is-gyro-following .cube-cubie-face::after { display: none; }
+
+
+.cube-visualizer.is-dragging .cube3d { transition: none; }
+.cube-view-controls { position: absolute; bottom: 10px; left: 50%; z-index: 2; display: flex; gap: 2px; transform: translateX(-50%); padding: 3px; border: 1px solid var(--rule); border-radius: 10px; background: var(--card); }
+.cube-view-controls button { min-height: 34px; padding: 4px 10px; border: 0; font-size: 12px; white-space: nowrap; }
+.cube-view-controls button:first-child, .cube-view-controls button:last-child { min-width: 34px; font-size: 18px; }
+.formula-cube-scene.cube-visualizer { position: relative; width: 112px; min-width: 112px; min-height: 112px; height: 112px; display: block; overflow: hidden; border: 0; border-radius: 12px; background: transparent; box-shadow: none; perspective: 560px; cursor: default; touch-action: auto; }
+.formula-cube-scene.cube-visualizer .cube-scene { position: absolute; left: 50%; top: 50%; width: 236px; height: 236px; transform: translate(-50%, -50%) scale(.46); transform-origin: center; pointer-events: none; }
+.formula-cube-scene.cube-visualizer .cube-scene::after { opacity: .65; }
+@media (max-width: 760px) {
+  .cube-view-controls button { min-height: 44px; min-width: 44px; }
+}

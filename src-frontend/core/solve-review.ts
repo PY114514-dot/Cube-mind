@@ -20,12 +20,6 @@ function stageAt(index: number, segments: StageSegment[]): Stage | "unknown" {
   return segment?.stage ?? "unknown";
 }
 
-function percentile(values: number[], ratio: number): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * ratio))];
-}
-
 export function analyzeSolveSteps(
   moves: string[],
   gaps: number[],
@@ -35,7 +29,8 @@ export function analyzeSolveSteps(
   const averageGap = usableGaps.length > 0
     ? usableGaps.reduce((sum, gap) => sum + gap, 0) / usableGaps.length
     : 0;
-  const pauseThreshold = Math.max(300, percentile(usableGaps, 0.75) * 2.2);
+  // 用户以 0.30s 作为节奏中断的可感知边界；相等的间隔不标记，避免临界误判。
+  const pauseThreshold = 300;
   const pauses = gaps
     .map((gap, index) => ({
       index,
@@ -44,7 +39,7 @@ export function analyzeSolveSteps(
       stage: stageAt(index, segments),
       reason: "long-pause" as const,
     }))
-    .filter((item) => item.gap >= pauseThreshold)
+    .filter((item) => item.gap > pauseThreshold)
     .sort((a, b) => b.gap - a.gap)
     .slice(0, 5);
 

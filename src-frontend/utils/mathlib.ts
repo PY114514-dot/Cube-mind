@@ -80,6 +80,37 @@ export class CubieCube {
     CubieCube.EdgeMult(a, b, prod);
   }
 
+  /** 从标准 URFDLB 54 位贴纸重建 cubie 状态；非法或不可达局面返回 null。 */
+  static fromFaceCube(facelets: string): CubieCube | null {
+    if (facelets.length !== 54 || /[^URFDLB]/.test(facelets)) return null;
+    const cube = new CubieCube();
+    for (let position = 0; position < 8; position++) {
+      const stickers = C_FACELET[position];
+      const orientation = stickers.findIndex((index) => facelets[index] === "U" || facelets[index] === "D");
+      if (orientation < 0) return null;
+      const first = facelets[stickers[(orientation + 1) % 3]];
+      const second = facelets[stickers[(orientation + 2) % 3]];
+      const piece = C_FACELET.findIndex((target) => SOLVED_FACELET[target[1]] === first && SOLVED_FACELET[target[2]] === second);
+      if (piece < 0) return null;
+      cube.ca[position] = (orientation << 3) | piece;
+    }
+    for (let position = 0; position < 12; position++) {
+      const stickers = E_FACELET[position];
+      const first = facelets[stickers[0]];
+      const second = facelets[stickers[1]];
+      let piece = E_FACELET.findIndex((target) => SOLVED_FACELET[target[0]] === first && SOLVED_FACELET[target[1]] === second);
+      let orientation = 0;
+      if (piece < 0) {
+        piece = E_FACELET.findIndex((target) => SOLVED_FACELET[target[0]] === second && SOLVED_FACELET[target[1]] === first);
+        orientation = 1;
+      }
+      if (piece < 0) return null;
+      cube.ea[position] = (piece << 1) | orientation;
+    }
+    // 只凭角块两张侧色会漏掉 U/D 贴纸互换；重建必须保留输入的全部贴纸与中心。
+    return cube.verify() === 0 && cube.toFaceCube() === facelets ? cube : null;
+  }
+
   from(other: CubieCube): void {
     this.ca = [...other.ca];
     this.ea = [...other.ea];

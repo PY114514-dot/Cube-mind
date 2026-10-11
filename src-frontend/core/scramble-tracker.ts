@@ -12,6 +12,12 @@ export interface ScrambleProgress {
   pendingHalfTurn?: string;
 }
 
+/** 本把打乱累计错误达到阈值时应放弃纠错队列，避免“错一手、改一手”无限膨胀。 */
+export function shouldRegenerateScrambleAfterWrongMoves(totalWrongMoves: number, limit = 6): boolean {
+  return Number.isInteger(totalWrongMoves) && Number.isInteger(limit)
+    && limit > 0 && totalWrongMoves >= limit;
+}
+
 export function createScrambleProgress(scramble: string): ScrambleProgress {
   return {
     completed: [],
