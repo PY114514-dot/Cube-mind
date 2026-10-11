@@ -1,6 +1,6 @@
 /** 将一次完成解法的运行时数据压缩为可持久化成绩记录。 */
 
-import type { AnalysisInput } from "../agent/types.ts";
+import type { AnalysisInput, CaseAlgorithmReference } from "../../src-shared/analysis-types.ts";
 import { calculateCrossMetrics } from "./cross-metrics.ts";
 import { getCfopPhase } from "./cstimer-cfop.ts";
 import type { CompletedSolveAnalysis } from "./completed-solve-analysis.ts";
@@ -30,7 +30,7 @@ export interface CompletedSolveRecordInput {
   penalty: InspectionPenalty;
   analysis: CompletedSolveAnalysis;
   blockPractice?: { mode: BlockPracticeMode; completed: boolean };
-  formulaPractice?: { category: "F2L" | "OLL" | "PLL"; formulaId: string; caseVerified: boolean };
+  formulaPractice?: { category: "F2L" | "OLL" | "PLL"; formulaId: string; caseVerified: boolean; referenceAlgorithm?: CaseAlgorithmReference };
 }
 
 export interface CompletedSolveRecord {
@@ -54,6 +54,9 @@ export function buildCompletedSolveRecord(source: CompletedSolveRecordInput): Co
     practiceMode: source.blockPractice?.mode,
     practiceKind: source.formulaPractice ? "formula" : source.blockPractice?.mode,
     practiceFormulaId: source.formulaPractice?.formulaId,
+    practiceReferenceAlgorithm: source.formulaPractice?.referenceAlgorithm
+      ? { ...source.formulaPractice.referenceAlgorithm, moves: [...source.formulaPractice.referenceAlgorithm.moves] }
+      : undefined,
     practiceOutcome: source.formulaPractice
       ? (formulaPracticeSucceeded ? "success" : "failed")
       : source.blockPractice ? (blockPracticeSucceeded ? "success" : "failed") : undefined,

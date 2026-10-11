@@ -1,5 +1,5 @@
 import { formatWcaAverage } from "./wca-average.ts";
-import type { AnalysisInput } from "../../src-shared/analysis-types.ts";
+import type { AnalysisInput, CaseAlgorithmReference } from "../../src-shared/analysis-types.ts";
 
 export type PracticeKind = "formula" | "cross" | "f2l" | "cross-f2l";
 
@@ -8,6 +8,7 @@ export interface PracticeRecord {
   duration: number;
   outcome: "success" | "failed";
   formulaId?: string;
+  referenceAlgorithm?: CaseAlgorithmReference;
   recognitionDuration?: number;
   executionDuration?: number;
   completedAt?: number;

@@ -10,6 +10,7 @@
     "serve": "npm run build && npm run server",
     "dev": "npm run build && npm run serve",
     "server": "tsx watch src-backend/server.ts",
+    "simulate": "node --import tsx scripts/simulate.mjs",
     "start": "npm run build && tsx src-backend/server.ts",
     "test": "node scripts/run-tests.mjs src-frontend/__tests__ src-backend/__tests__",
     "test:ble": "tsx --test src-frontend/__tests__/ble-packet-harness.test.ts src-frontend/__tests__/gan-v2-packet.test.ts src-frontend/__tests__/moyu-cube.test.ts",

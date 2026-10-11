@@ -5,6 +5,7 @@
 import type { AnalysisInput } from "../agent/types.ts";
 import { resolvePersistedSolveTrust } from "./solve-validation.ts";
 import { calculateWcaAverage, getWcaScore } from "./wca-average.ts";
+import { canCompareFormulaPractice } from "./practice-effect.ts";
 
 export interface SolveResultFeedback {
   label: string;
@@ -30,6 +31,7 @@ export function buildSolveResultFeedback(current: AnalysisInput, history: Analys
   const comparable = history.filter((solve) =>
     resolvePersistedSolveTrust(solve).scoreEligible && isPracticeSolve(solve) === isPracticeSolve(current)
       && (!isPracticeSolve(current) || solve.practiceKind === current.practiceKind)
+      && (current.practiceKind !== "formula" || canCompareFormulaPractice(current, solve))
   );
   const currentScore = getScore(current);
   const isPersonalBest = comparable.every((solve) => currentScore < getScore(solve));

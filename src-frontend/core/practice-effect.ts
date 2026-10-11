@@ -4,12 +4,26 @@
  */
 
 import { getFormulaMastery, type FormulaMastery, type PracticeRecord } from "./practice-stats.ts";
+import { hasSameCaseReference } from "../../src-shared/analysis-coaching.ts";
+import type { AnalysisInput } from "../../src-shared/analysis-types.ts";
 
 export interface FormulaPracticeEffect {
   baseline: FormulaMastery | null;
   session: FormulaMastery;
   successRateDelta: number | null;
   executionDurationDelta: number | null;
+  executionComparable: boolean;
+}
+
+/** 单把专项速度与 PB 只比较同 CASE、同解法的成功记录。 */
+export function canCompareFormulaPractice(current: AnalysisInput, previous: AnalysisInput | undefined): boolean {
+  if (!previous || current.practiceKind !== "formula" || previous.practiceKind !== "formula"
+    || !current.practiceFormulaId || current.practiceFormulaId !== previous.practiceFormulaId
+    || current.practiceOutcome !== "success" || previous.practiceOutcome !== "success") return false;
+  return hasSameCaseReference([
+    { referenceAlgorithm: current.practiceReferenceAlgorithm },
+    { referenceAlgorithm: previous.practiceReferenceAlgorithm },
+  ]);
 }
 
 /**
@@ -27,11 +41,14 @@ export function compareFormulaPractice(
   const session = getFormulaMastery(sessionRecords, formulaId);
   const baselineMastery = getFormulaMastery(baselineRecords, formulaId);
   const baseline = baselineMastery.attempts > 0 ? baselineMastery : null;
+  const timedSuccesses = formulaRecords.filter((record) => record.outcome === "success" && record.executionDuration !== undefined);
+  const executionComparable = hasSameCaseReference(timedSuccesses);
   return {
     baseline,
     session,
+    executionComparable,
     successRateDelta: baseline ? session.successRate - baseline.successRate : null,
-    executionDurationDelta: baseline !== null && baseline.averageExecutionDuration !== null && session.averageExecutionDuration !== null
+    executionDurationDelta: executionComparable && baseline !== null && baseline.averageExecutionDuration !== null && session.averageExecutionDuration !== null
       ? session.averageExecutionDuration - baseline.averageExecutionDuration
       : null,
   };

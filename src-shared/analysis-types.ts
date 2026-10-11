@@ -17,6 +17,8 @@ export interface AnalysisInput {
   practiceMode?: "cross" | "f2l" | "cross-f2l";
   practiceKind?: "formula" | "cross" | "f2l" | "cross-f2l";
   practiceFormulaId?: string;
+  /** 专项训练时所选解法快照；不同解法不能直接比较执行速度。 */
+  practiceReferenceAlgorithm?: CaseAlgorithmReference;
   practiceOutcome?: "success" | "failed";
   recognitionDuration?: number;
   executionDuration?: number;

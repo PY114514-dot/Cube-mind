@@ -40,6 +40,9 @@ const REVIEW_THRESHOLD_KEY = "cubemind:review-threshold";
 
 export interface HistoryControllerElements {
   historyToday: HTMLElement;
+  statLast: HTMLElement;
+  statAo5: HTMLElement;
+  statCount: HTMLElement;
   historyAo5: HTMLElement;
   historyAo12: HTMLElement;
   historyAo25: HTMLElement;
@@ -190,6 +193,10 @@ export class HistoryController {
       [this.els.historyAo50, 50], [this.els.historyAo100, 100],
     ];
     for (const [element, size] of averages) element.textContent = this.formatAverage(scoredSolves, size);
+    const lastScore = scoredSolves[scoredSolves.length - 1];
+    this.els.statLast.textContent = lastScore ? `${formatSolveTimeLocal(lastScore)}${lastScore.penalty === "dnf" ? "" : "s"}` : "—";
+    this.els.statAo5.textContent = this.els.historyAo5.textContent;
+    this.els.statCount.textContent = String(visibleHistory.length);
 
     const latest = visibleHistory
       .slice(-10)

@@ -73,6 +73,7 @@ export function createMoveController(
     if (state.scramble.isGenerationPending) {
       // 这一步已经改变了实体魔方，不能再把稍后生成的新打乱叠加到旧局面上。
       cubeVisualizer.applyMove(move.move);
+      state.scramble.performedMoves.push(move.move);
       scramble.cancelGeneration();
       log("生成指定 Cross 打乱时检测到实体转动，已取消本次生成。请先复原实体魔方，再点击“新打乱”。", "error");
       return;
@@ -81,12 +82,12 @@ export function createMoveController(
     cubeVisualizer.applyMove(move.move);
 
     if (state.practice.awaitingNextScramble) {
-      if (state.practice.postSolveMove && invertMove(state.practice.postSolveMove) === move.move) {
+      const previous = state.practice.postSolveMoves[state.practice.postSolveMoves.length - 1];
+      state.practice.postSolveMoves.push(move.move);
+      if (previous && invertMove(previous) === move.move) {
         log("检测到相反动作，生成下一条打乱");
         closeResultModals();
         void scramble.newScramble();
-      } else {
-        state.practice.postSolveMove = move.move;
       }
       return;
     }
@@ -103,18 +104,8 @@ export function createMoveController(
       }
     }
 
-    if (state.practice.session && wasCompletingScramble && state.scramble.progress.remaining.length === 0) {
-      const facelets = cubeVisualizer.getFacelets();
-      const match = recognizeFormulaPracticeCase(facelets, state.practice.session.formula);
-      state.practice.caseVerified = match?.formulaId === state.practice.session.formula.id;
-      if (match?.formulaId === state.practice.session.formula.id) {
-        log(`${state.practice.session.formula.category} 识别：${match.formulaId} · ${match.name}（精确匹配）`);
-      } else {
-        const fallback = state.practice.session.formula.category === "F2L" ? recognizeF2lCase(facelets) : null;
-        log(fallback
-          ? `${state.practice.session.formula.category} 起始 case 不匹配：期望 ${state.practice.session.formula.id}，识别为 ${fallback.formulaId}`
-          : `${state.practice.session.formula.category} 起始 case 未能可靠匹配：期望 ${state.practice.session.formula.id}`, "error");
-      }
+    if (wasCompletingScramble && state.scramble.progress.remaining.length === 0) {
+      verifyPracticeCase(state, cubeVisualizer, log);
     }
 
     if (shouldStartSolve) {
@@ -143,4 +134,20 @@ export function createMoveController(
   }
 
   return { onCubeMove };
+}
+
+function verifyPracticeCase(state: AppState, visualizer: MoveVisualizerDeps, log: MoveControllerDependencies["log"]): void {
+  const formula = state.practice.session?.formula;
+  if (!formula) return;
+  const facelets = visualizer.getFacelets();
+  const match = recognizeFormulaPracticeCase(facelets, formula);
+  state.practice.caseVerified = match?.formulaId === formula.id;
+  if (match?.formulaId === formula.id) {
+    log(`${formula.category} 识别：${match.formulaId} · ${match.name}（精确匹配）`);
+  } else {
+    const fallback = formula.category === "F2L" ? recognizeF2lCase(facelets) : null;
+    log(fallback
+      ? `${formula.category} 起始 case 不匹配：期望 ${formula.id}，识别为 ${fallback.formulaId}`
+      : `${formula.category} 起始 case 未能可靠匹配：期望 ${formula.id}`, "error");
+  }
 }

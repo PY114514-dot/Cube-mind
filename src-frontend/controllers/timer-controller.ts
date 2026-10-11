@@ -84,7 +84,7 @@ function resetTimerSession(els: TimerControllerElements, state: AppState, deps: 
   timerDisplay.stopDisplay();
   state.practice.blockMode = null;
   state.practice.awaitingNextScramble = false;
-  state.practice.postSolveMove = null;
+  state.practice.postSolveMoves = [];
   timerDisplay.updateDisplay();
   els.btnStart.disabled = false;
   els.btnStop.disabled = true;

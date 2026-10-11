@@ -22,6 +22,7 @@ import { resolvePersistedSolveTrust, type PhysicalCubeState } from "../core/solv
 import { sendDiagnosticEvent, type DiagnosticMode } from "../core/diagnostics-client.ts";
 import { SOLVED_FACELET } from "../utils/mathlib.ts";
 import { SYSTEM_HISTORY_GROUP_IDS } from "./history-controller.ts";
+import { compactMoves } from "../core/practice-transition.ts";
 
 export interface SolveCompletionElements {
   cfopOutput: HTMLElement;
@@ -129,7 +130,7 @@ function finishRecordedSolve(state: AppState, deps: SolveCompletionDependencies,
   }
   deps.log(plan.statusMessage, plan.statusLevel);
   state.practice.awaitingNextScramble = plan.awaitingNextScramble;
-  state.practice.postSolveMove = null;
+  state.practice.postSolveMoves = [];
   state.solve.hasPermanentMoveGap = false;
   state.solve.inspectionDuration = 0;
   deps.log(saved ? "成绩已保存；点击右下角 AI 可按需分析历史成绩" : "成绩仅保留在本次页面，请导出 JSON 备份", saved ? "info" : "error");
@@ -141,7 +142,6 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
     const timerState = deps.timer.getState();
     const practiceSession = state.practice.session;
     const scrambleProgress = state.scramble.progress;
-    const isFormulaAttempt = state.practice.session !== null;
     const formulaPractice = state.practice.session?.formula;
     if (timerState.moves.length === 0) {
       deps.log("无 move 数据，无法分析", "error");
@@ -149,6 +149,7 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
     }
 
     const moveTimes = timerState.moves.map((m) => m.timestamp);
+    const scrambleMoves = compactMoves([...state.scramble.startingMoves, ...state.scramble.progress.completed]);
     const hardwareFacelets = await deps.ble.requestCurrentFacelets();
     // 回读可能跨越重置、断连或训练切换，过期结果不能修改 UI、历史与新一轮状态。
     if (signal.aborted || deps.timer.getState() !== timerState || state.practice.session !== practiceSession
@@ -157,7 +158,7 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
       ? "unavailable"
       : hardwareFacelets === SOLVED_FACELET ? "confirmed-solved" : "confirmed-unsolved";
     const completedAnalysis = analyzeCompletedSolve({
-      scrambleMoves: state.scramble.progress.completed,
+      scrambleMoves,
       moveEvents: state.solve.events,
       moveTimes,
       moveGaps: timerState.moves.map((move) => move.gapFromPrev),
@@ -169,7 +170,6 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
       externalAnomalies: state.solve.hasPermanentMoveGap ? ["missing-event"] : [],
     });
     const { validation, trust: solveTrust, stepReview } = completedAnalysis;
-    const analysisEligible = solveTrust.analysisEligible;
     showCompletedAnalysis(els, state, deps, completedAnalysis, physicalState);
 
     const previousSolve = state.recentSolves[state.recentSolves.length - 1];
@@ -180,7 +180,7 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
       deviceName: els.deviceName.textContent?.trim() || "未标识魔方",
       deviceId: deps.ble.getDeviceId(),
       groupId: !practiceKind && !SYSTEM_HISTORY_GROUP_IDS.has(deps.history.getSelectedGroup()) ? deps.history.getSelectedGroup() : undefined,
-      scrambleMoves: state.scramble.progress.completed,
+      scrambleMoves,
       moves: timerState.moves,
       solveStartTime: timerState.startTime,
       solveEndTime: timerState.endTime,
@@ -194,14 +194,15 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
         category: state.practice.session.formula.category,
         formulaId: state.practice.session.formula.id,
         caseVerified: state.practice.caseVerified,
+        referenceAlgorithm: { name: state.practice.session.formula.name, moves: state.practice.session.formula.moves },
       } : undefined,
     });
     const { input, formulaPracticeSucceeded, blockPracticeSucceeded } = completedRecord;
     const completionPlan = buildSolveCompletionPlan({
-      analysisEligible,
+      analysisEligible: solveTrust.analysisEligible,
       physicalState,
       validationAnomalies: validation.anomalies,
-      isFormulaAttempt,
+      isFormulaAttempt: formulaPractice !== undefined,
       formulaPracticeSucceeded,
       blockPracticeSucceeded,
     });

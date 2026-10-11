@@ -59,6 +59,9 @@ const formulaLibrary = new FormulaLibraryController({
 });
 const historyController = new HistoryController({
   historyToday: els.historyToday,
+  statLast: els.statLast,
+  statAo5: els.statAo5,
+  statCount: els.statCount,
   historyAo5: els.historyAo5,
   historyAo12: els.historyAo12,
   historyAo25: els.historyAo25,
@@ -172,6 +175,7 @@ const bleController = new BleConnectionController(
       log(`设备动作缺口：缺少 ${gap.missing} 步（${gap.previousMoveCnt} → ${gap.nextMoveCnt}），本把将只保留实体成绩。`, "error");
     },
     onDisconnect: (brand) => {
+      scrambleController.cancelPhysicalVerification();
       timerController.abortOnDisconnect(brand);
     },
     onConnected: (brand) => {

@@ -29,8 +29,9 @@ export interface ScrambleState {
   isGenerationPending: boolean;
   progress: ScrambleProgress;
   performedMoves: string[];
+  /** 本轮执行打乱前的已追踪局面，供过渡打乱的绝对回放起点使用。 */
+  startingMoves: string[];
   stateVerified: boolean;
-  isVerifyingPhysical: boolean;
   wrongMoveCount: number;
 }
 
@@ -55,7 +56,7 @@ export interface PracticeState {
   needsRetry: boolean;
   caseVerified: boolean;
   awaitingNextScramble: boolean;
-  postSolveMove: string | null;
+  postSolveMoves: string[];
 }
 
 /** BLE 诊断录制 */
@@ -87,8 +88,8 @@ export function createInitialState(recentSolves: AnalysisInput[]): AppState {
       isGenerationPending: false,
       progress: createScrambleProgress(""),
       performedMoves: [],
+      startingMoves: [],
       stateVerified: false,
-      isVerifyingPhysical: false,
       wrongMoveCount: 0,
     },
     solve: {
@@ -109,7 +110,7 @@ export function createInitialState(recentSolves: AnalysisInput[]): AppState {
       needsRetry: false,
       caseVerified: false,
       awaitingNextScramble: false,
-      postSolveMove: null,
+      postSolveMoves: [],
     },
     diagnostics: {
       isBleRecording: false,

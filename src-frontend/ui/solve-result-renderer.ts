@@ -2,6 +2,7 @@
 
 import type { AnalysisInput } from "../agent/types.ts";
 import { buildSolveResultView, buildStepReviewPresentation } from "../core/solve-result-view.ts";
+import { canCompareFormulaPractice } from "../core/practice-effect.ts";
 import type { SolveReview } from "../core/solve-review.ts";
 import type { FormulaPracticeCategory } from "./solve-timeline.ts";
 
@@ -49,6 +50,7 @@ function buildPracticeMetrics(
   previous: AnalysisInput | undefined,
   category: FormulaPracticeCategory,
 ): { label: string; value: string; delta: string }[] {
+  previous = canCompareFormulaPractice(current, previous) ? previous : undefined;
   const stageDuration = category === "F2L" ? current.f2lDuration : category === "OLL" ? current.ollDuration : current.pllDuration;
   const previousStageDuration = category === "F2L" ? previous?.f2lDuration : category === "OLL" ? previous?.ollDuration : previous?.pllDuration;
   return [

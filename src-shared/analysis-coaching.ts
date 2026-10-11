@@ -121,7 +121,7 @@ export function flagCaseEvents(events: CaseEvent[] | undefined, averageGap: numb
 }
 
 /** 同一解法快照才允许汇总或比较参照步数差。 */
-export function hasSameCaseReference(events: CaseEvent[]): boolean {
+export function hasSameCaseReference(events: Pick<CaseEvent, "referenceAlgorithm">[]): boolean {
   const moves = events[0]?.referenceAlgorithm?.moves.join(" ");
   return moves !== undefined && events.every((event) => event.referenceAlgorithm?.moves.join(" ") === moves);
 }
