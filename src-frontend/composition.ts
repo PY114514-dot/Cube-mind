@@ -241,7 +241,7 @@ export interface SolvePipelineDeps {
   log: LogFn;
 }
 
-function setupTimerRuntime(deps: SolvePipelineDeps, onSolveComplete: () => Promise<void>) {
+function setupTimerRuntime(deps: SolvePipelineDeps, onSolveComplete: (signal: AbortSignal) => Promise<void>) {
   const { state, timer, timerDisplay, cubeVisualizer, log } = deps;
   // CFOP 阶段指示条：纯 DOM 状态映射，先于引用它的 move 控制器装配。
   const phaseIndicatorController = createPhaseIndicatorController({
@@ -311,7 +311,7 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
     },
   );
 
-  const { timerController, phaseIndicatorController } = setupTimerRuntime(deps, () => solveCompletionController.onSolveComplete());
+  const { timerController, phaseIndicatorController } = setupTimerRuntime(deps, (signal) => solveCompletionController.onSolveComplete(signal));
 
   const moveController = createMoveController(state, {
     timer,

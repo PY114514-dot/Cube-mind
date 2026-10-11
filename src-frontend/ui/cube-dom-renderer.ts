@@ -219,15 +219,16 @@ export class CubeDomRenderer {
     let startY = 0;
     let initialX = 0;
     let initialY = 0;
-    let dragging = false;
+    let activePointerId: number | null = null;
     let moved = false;
 
     this.root.addEventListener("pointerdown", (event) => {
+      if (activePointerId !== null) return;
       if (event.pointerType === "mouse" && event.button !== 0) return;
       if (event.target instanceof Element && event.target.closest("button")) return;
       event.preventDefault();
       this.root.focus({ preventScroll: true });
-      dragging = true;
+      activePointerId = event.pointerId;
       startX = event.clientX;
       startY = event.clientY;
       initialX = this.rotationX;
@@ -238,7 +239,7 @@ export class CubeDomRenderer {
     }, { capture: true });
 
     this.root.addEventListener("pointermove", (event) => {
-      if (!dragging) return;
+      if (event.pointerId !== activePointerId) return;
       event.preventDefault();
       if (Math.abs(event.clientX - startX) > 3 || Math.abs(event.clientY - startY) > 3) moved = true;
       this.rotationY = getManualYawAfterDrag(initialY, event.clientX - startX);
@@ -248,8 +249,8 @@ export class CubeDomRenderer {
     }, { capture: true });
 
     const stopDragging = (event: PointerEvent): void => {
-      if (!dragging) return;
-      dragging = false;
+      if (event.pointerId !== activePointerId) return;
+      activePointerId = null;
       const shouldPaint = !moved && event.type === "pointerup";
       this.root.classList.remove("is-dragging");
       if (this.root.hasPointerCapture(event.pointerId)) this.root.releasePointerCapture(event.pointerId);
@@ -257,6 +258,7 @@ export class CubeDomRenderer {
     };
     this.root.addEventListener("pointerup", stopDragging, { capture: true });
     this.root.addEventListener("pointercancel", stopDragging, { capture: true });
+    this.root.addEventListener("lostpointercapture", stopDragging, { capture: true });
   }
 
   private scheduleManualRotationFrame(): void {

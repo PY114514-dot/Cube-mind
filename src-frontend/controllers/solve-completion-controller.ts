@@ -136,8 +136,11 @@ function finishRecordedSolve(state: AppState, deps: SolveCompletionDependencies,
 }
 
 export function createSolveCompletionController(els: SolveCompletionElements, state: AppState, deps: SolveCompletionDependencies) {
-  async function onSolveComplete(): Promise<void> {
+  async function onSolveComplete(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return;
     const timerState = deps.timer.getState();
+    const practiceSession = state.practice.session;
+    const scrambleProgress = state.scramble.progress;
     const isFormulaAttempt = state.practice.session !== null;
     const formulaPractice = state.practice.session?.formula;
     if (timerState.moves.length === 0) {
@@ -147,6 +150,9 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
 
     const moveTimes = timerState.moves.map((m) => m.timestamp);
     const hardwareFacelets = await deps.ble.requestCurrentFacelets();
+    // 回读可能跨越重置、断连或训练切换，过期结果不能修改 UI、历史与新一轮状态。
+    if (signal.aborted || deps.timer.getState() !== timerState || state.practice.session !== practiceSession
+      || state.scramble.progress !== scrambleProgress) return;
     const physicalState = hardwareFacelets === null
       ? "unavailable"
       : hardwareFacelets === SOLVED_FACELET ? "confirmed-solved" : "confirmed-unsolved";
