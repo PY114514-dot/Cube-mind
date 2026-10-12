@@ -66,7 +66,7 @@ async function checkCancellation(): Promise<void> {
   ganCube.releaseReads();
   await delay(500);
   assert(localStorage.getItem(HISTORY_STORAGE_KEY) === before, "重置后旧回读保存了成绩");
-  assert(element("#timer-display").textContent === "0.00s", "旧回读覆盖了重置后的计时");
+  assert(element("#timer-display").textContent === "0.00", "旧回读覆盖了重置后的计时");
 }
 
 async function checkNormalSolve(): Promise<void> {

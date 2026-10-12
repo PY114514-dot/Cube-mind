@@ -14,7 +14,7 @@ export function createApp(): express.Express {
   const app = express();
   const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS ?? "")
     .split(",").map((origin) => origin.trim()).filter(Boolean));
-  app.use(express.json({ limit: "256kb" }));
+  app.use(express.json({ limit: "1mb" }));
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     const origin = req.headers.origin;

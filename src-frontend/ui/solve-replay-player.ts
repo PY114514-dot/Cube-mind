@@ -2,6 +2,7 @@ import { CubeVisualizer } from "./cube-visualizer.ts";
 import type { AnalysisInput } from "../../src-shared/analysis-types.ts";
 import { buildReplayTimestamps } from "../core/solve-replay-timing.ts";
 import { renderSolveTimeline } from "./solve-timeline.ts";
+import { formatMovesForWhiteBottom } from "../core/solve-notation.ts";
 
 const SPEEDS = [0.5, 1, 2, 4] as const;
 
@@ -25,6 +26,7 @@ export class SolveReplayPlayer {
   private readonly root: HTMLElement;
   private readonly scrambleMoves: string[];
   private readonly solutionMoves: string[];
+  private readonly notationMoves: string[];
   private readonly visualizer: CubeVisualizer;
   private readonly range: HTMLInputElement;
   private readonly stepLabel: HTMLElement;
@@ -49,6 +51,7 @@ export class SolveReplayPlayer {
     this.root = root;
     this.scrambleMoves = splitMoves(solve.scramble ?? "");
     this.solutionMoves = (solve.moves ?? []).slice();
+    this.notationMoves = options.view === "white-top" ? this.solutionMoves : formatMovesForWhiteBottom(this.solutionMoves, "U");
     this.timestamps = buildReplayTimestamps(this.solutionMoves.length, solve.moveGaps);
     this.recordedMode = this.timestamps !== null;
     this.onPlay = options.onPlay;
@@ -208,7 +211,7 @@ export class SolveReplayPlayer {
     this.stepLabel.textContent = `第 ${this.index} 步 · ${this.startIndex > 0 || this.endIndex < this.solutionMoves.length
       ? `片段 ${this.startIndex + 1}–${this.endIndex} 步` : `共 ${this.solutionMoves.length} 步`}`;
     const moveLabel = this.root.querySelector<HTMLElement>("[data-replay-move]");
-    if (moveLabel) moveLabel.textContent = this.index < this.endIndex ? `下一步 ${this.solutionMoves[this.index]}`
+    if (moveLabel) moveLabel.textContent = this.index < this.endIndex ? `下一步 ${this.notationMoves[this.index]}`
       : this.endIndex < this.solutionMoves.length ? "片段结束" : "已完成";
     this.modeButton.textContent = this.recordedMode ? "实速回放" : "匀速演示";
     this.modeButton.setAttribute("aria-pressed", String(this.recordedMode));

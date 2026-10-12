@@ -2,6 +2,7 @@
 
 import { CubieCube, parseMove, SOLVED_FACELET } from "../utils/mathlib.ts";
 import { getCfopPhase, type CfopPhase } from "./cstimer-cfop.ts";
+import { formatMovesForWhiteBottom } from "./solve-notation.ts";
 import {
   isCubeSolved,
   isF2lComplete,
@@ -167,7 +168,7 @@ function matchCaseIds(states: CubieCube[]): {
   return { ollCaseId, ollCaseStartIndex, pllCaseId, pllCaseStartIndex };
 }
 
-export function formatCfop(result: CfopResult): string {
+export function formatCfop(result: CfopResult, targetFace: "U" | "D"): string {
   const names: Record<Stage, string> = {
     scramble: "Scramble",
     cross: "Cross",
@@ -177,10 +178,12 @@ export function formatCfop(result: CfopResult): string {
     incomplete: "未完成",
     solved: "已还原",
   };
-  const lines = [`总步数: ${result.totalMoves} | 已还原: ${result.isSolved ? "是" : "否"}`, "─".repeat(60)];
+  const notation = targetFace === "U" ? "白底记谱（白下黄上）" : "底层记谱";
+  const lines = [notation, `总步数: ${result.totalMoves} | 已还原: ${result.isSolved ? "是" : "否"}`, "─".repeat(60)];
   for (const segment of result.segments) {
     if (segment.stage === "solved") continue;
-    lines.push(`${names[segment.stage].padEnd(8)} ${String(segment.moves.length).padStart(2)}步  ${(segment.duration / 1000).toFixed(2).padStart(6)}s  ${segment.moves.length > 0 ? segment.moves.join(" ") : "(空)"}`);
+    const displayMoves = formatMovesForWhiteBottom(segment.moves, targetFace);
+    lines.push(`${names[segment.stage].padEnd(8)} ${String(segment.moves.length).padStart(2)}步  ${displayMoves.length > 0 ? displayMoves.join(" ") : "(空)"}`);
   }
   return lines.join("\n");
 }

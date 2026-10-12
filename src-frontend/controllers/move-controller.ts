@@ -42,7 +42,7 @@ export interface MoveTimerDeps {
 /** Move 编排用到的阶段指示条操作 */
 export interface MovePhaseIndicatorDeps {
   show(phase: CfopPhase): void;
-  complete(): void;
+  complete(phase: CfopPhase): void;
 }
 
 export interface MoveControllerDependencies {
@@ -125,7 +125,7 @@ export function createMoveController(
     const shouldStopFormulaOll = state.practice.session?.formula.category === "OLL" && timer.getState().moves.length > 0 && blockPhase === "oll";
     if (timer.getState().isRunning && timer.getState().moves.length > 0 && (cubeVisualizer.isSolved() || shouldStopBlock || shouldStopCross || shouldStopFormulaF2l || shouldStopFormulaOll)) {
       if (shouldStopBlock || shouldStopCross) state.practice.blockCompleted = true;
-      phaseIndicator.complete();
+      phaseIndicator.complete(blockPhase);
       void timerController.stopSolveTimerAndAnalyze();
     } else if (timer.getState().isRunning) {
       // 计时期间实时显示当前 CFOP 阶段，让阶段进度在训练中可见。

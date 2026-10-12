@@ -10,7 +10,6 @@ import { invertQuaternion, multiplyQuaternion, normalizeQuaternion, slerpQuatern
 
 export const FACE_ORDER = ["U", "R", "F", "D", "L", "B"] as const;
 
-const MAX_PENDING_TURN_ANIMATIONS = 4;
 // 低于一帧半的跟随时间常数：平滑低频 BLE 通知，同时不让手持转动有明显拖尾。
 const ORIENTATION_SMOOTHING_MS = 28;
 const SETTLED_QUATERNION_DOT = 0.999995;
@@ -39,11 +38,6 @@ export function getFaceTurnAnimation(move: string): FaceTurnAnimation | null {
   return { face, degrees: isDouble ? 180 : move.includes("'") ? -90 : 90, duration: isDouble ? 220 : 160 };
 }
 
-/** 连续动作超过动画吞吐时，优先保证局面正确而非播放过期动画。 */
-export function shouldFastForwardTurnAnimation(isAnimating: boolean, pendingTurns: number): boolean {
-  return isAnimating && pendingTurns >= MAX_PENDING_TURN_ANIMATIONS;
-}
-
 /**
  * 设备上报的是设备相对世界的姿态，CSS 视图需要观察方向的逆变换。
  * 不做时间插值，避免快速转动时画面持续落后于实体魔方。
@@ -70,7 +64,7 @@ function isQuaternionSettled(current: DeviceQuaternion, target: DeviceQuaternion
 /** 将视觉层的 CSS 旋转提交为新的整数网格坐标。 */
 export function rotateCubiePosition(position: CubiePosition, animation: Pick<FaceTurnAnimation, "face" | "degrees">): CubiePosition {
   const face = animation.face.toUpperCase();
-  const angle = face === "D" || face === "R" || face === "B" ? -animation.degrees : animation.degrees;
+  const angle = face === "U" || face === "L" || face === "B" ? -animation.degrees : animation.degrees;
   const quarterTurns = Math.abs(Math.round(angle / 90));
   const positive = angle >= 0;
   let next = { ...position };

@@ -154,18 +154,18 @@ body:has(.modal.open) { overflow: hidden; }
 .agent-tab + .agent-tab { border-left: 1px solid var(--rule); }
 .agent-tab.active { background: var(--accent); color: #fff; }
 .agent-tab-panel[hidden] { display: none; }
+.analysis-run-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 13px; }
+.analysis-run-controls #analysis-count { width: 96px; min-height: 44px; margin: 0; }
+.analysis-run-controls button { margin: 0 0 0 auto; }
 
 /* ===== 解法结果弹窗 ===== */
-.solve-summary { display: grid; grid-template-columns: minmax(170px, .72fr) minmax(0, 1.45fr); gap: 12px; margin: 0 0 12px; }
-.solve-summary > div { padding: 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--muted-surface); }
-.solve-summary span, .solve-summary em { display: block; color: var(--warm-gray); font-size: 11px; font-style: normal; }
-.solve-summary strong { color: var(--ink); font-size: 15px; }
+.solve-summary { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; margin: 0 0 12px; }
 .solve-result-hero { padding: 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--card); }
 .solve-result-hero > span, .solve-result-hero p { display: block; margin: 0; color: var(--warm-gray); font-size: 12px; line-height: 1.45; }
-.solve-result-hero > strong { display: block; margin: 3px 0 7px; font-family: var(--mono); font-size: 30px; line-height: 1; }
+.solve-result-hero > strong { display: flex; align-items: baseline; gap: 4px; margin: 8px 0; font-family: var(--sans); font-size: 40px; font-weight: 500; line-height: 1; }
 .solve-result-hero > strong small { font-size: 13px; }
 .solve-result-hero p b { color: var(--ink); }
-.solve-stage-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.solve-stage-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .solve-stage-metrics > div { padding: 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--muted-surface); }
 .solve-stage-metrics span, .solve-stage-metrics em { display: block; color: var(--warm-gray); font-size: 11px; font-style: normal; }
 .solve-stage-metrics strong { display: block; color: var(--ink); font-family: var(--mono); font-size: 17px; margin: 3px 0; }

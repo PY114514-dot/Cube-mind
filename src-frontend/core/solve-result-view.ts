@@ -37,7 +37,7 @@ export interface StepReviewPresentation {
 /** 统一呈现可信度、成绩反馈、指标差值与专项结果，DOM 层无需再判断状态。 */
 export function buildSolveResultView(current: AnalysisInput, previous: AnalysisInput | undefined, history: AnalysisInput[]): SolveResultView {
   const trust = resolvePersistedSolveTrust(current);
-  const metrics = buildMetrics(current, previous, trust.analysisEligible);
+  const metrics = buildMetrics(current, previous);
   return {
     time: formatWcaSolveTime({ duration: current.totalDuration, penalty: current.penalty }),
     showSecondsUnit: current.penalty !== "dnf",
@@ -61,18 +61,11 @@ export function buildStepReviewPresentation(review: SolveReview): StepReviewPres
   };
 }
 
-function buildMetrics(current: AnalysisInput, previous: AnalysisInput | undefined, analysisEligible: boolean): SolveResultMetric[] {
-  const base = [
+function buildMetrics(current: AnalysisInput, previous: AnalysisInput | undefined): SolveResultMetric[] {
+  return [
     metric("观察", current.inspectionDuration ?? 0, previous?.inspectionDuration, "s", current.inspectionDuration ? formatSeconds(current.inspectionDuration) : "—"),
     metric("TPS", current.tps ?? 0, previous?.tps, "", (current.tps ?? 0).toFixed(2)),
   ];
-  if (!analysisEligible) return base;
-  return base.concat([
-    metric("Cross", current.crossDuration, previous?.crossDuration, "s", formatSeconds(current.crossDuration)),
-    metric("F2L", current.f2lDuration, previous?.f2lDuration, "s", formatSeconds(current.f2lDuration)),
-    metric("OLL", current.ollDuration, previous?.ollDuration, "s", formatSeconds(current.ollDuration)),
-    metric("PLL", current.pllDuration, previous?.pllDuration, "s", formatSeconds(current.pllDuration)),
-  ]);
 }
 
 function metric(label: string, current: number, previous: number | undefined, unit: "s" | "", value: string): SolveResultMetric {

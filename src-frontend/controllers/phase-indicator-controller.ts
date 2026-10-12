@@ -16,30 +16,29 @@ export interface PhaseIndicatorElements {
   cfopPhaseIndicator: HTMLElement;
 }
 
-/** 与 DOM 中四段 .phase-seg 的顺序一一对应（第 4 段文案为 PLL，底层用 solved 表示） */
-const PHASE_ORDER = ["cross", "f2l", "oll", "solved"] as const;
+// 检测器返回已经完成的阶段，而指示条标记接下来正在执行的阶段。
+const PHASE_ORDER = ["scramble", "cross", "f2l", "oll", "solved"] as const;
 
 const IDLE_ALL: PhaseIndicatorState[] = ["idle", "idle", "idle", "idle"];
 
 export function computePhaseIndicatorState(phase: CfopPhase | null): PhaseIndicatorState[] {
   if (!phase) return [...IDLE_ALL];
-  // 十字尚未完成时（scramble）仍处于 cross 阶段：计时期间显示 cross 激活而非空白。
-  const stage = phase === "scramble" ? "cross" : phase;
-  const index = PHASE_ORDER.indexOf(stage);
+  const index = PHASE_ORDER.indexOf(phase);
   if (index < 0) return [...IDLE_ALL];
-  return PHASE_ORDER.map((_, i) => {
+  return IDLE_ALL.map((_, i) => {
     if (i < index) return "done";
-    if (i === index && stage !== "solved") return "active";
-    return stage === "solved" ? "done" : "idle";
+    if (i === index) return "active";
+    return "idle";
   });
 }
 
 export function createPhaseIndicatorController(els: PhaseIndicatorElements): {
   reset(): void;
   show(phase: CfopPhase): void;
-  complete(): void;
+  complete(phase: CfopPhase): void;
 } {
   const segments = Array.from(els.cfopPhaseIndicator.querySelectorAll<HTMLElement>(".phase-seg"));
+  let completedIndex = -1;
 
   function apply(states: PhaseIndicatorState[]): void {
     segments.forEach((seg, i) => {
@@ -48,17 +47,19 @@ export function createPhaseIndicatorController(els: PhaseIndicatorElements): {
   }
 
   function reset(): void {
+    completedIndex = -1;
     apply([...IDLE_ALL]);
   }
 
   function show(phase: CfopPhase): void {
-    apply(computePhaseIndicatorState(phase));
+    // 与复盘解析同样保留已经达到的边界，公式内部临时拆开下层不撤回进度。
+    completedIndex = Math.max(completedIndex, PHASE_ORDER.indexOf(phase));
+    apply(computePhaseIndicatorState(PHASE_ORDER[completedIndex]));
   }
 
-  function complete(): void {
-    segments.forEach((seg) => {
-      seg.dataset.state = "done";
-    });
+  function complete(phase: CfopPhase): void {
+    completedIndex = Math.max(completedIndex, PHASE_ORDER.indexOf(phase));
+    apply(computePhaseIndicatorState(PHASE_ORDER[completedIndex]).map((state) => state === "active" ? "idle" : state));
   }
 
   return { reset, show, complete };

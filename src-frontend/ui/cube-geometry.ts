@@ -88,10 +88,10 @@ export function isCubieInFaceLayer(cubie: HTMLElement, face: string): boolean {
 }
 
 export function getLayerRotation(face: string, degrees: number): string {
-  if (face === "U") return `rotateY(${degrees}deg)`;
-  if (face === "D") return `rotateY(${-degrees}deg)`;
-  if (face === "R") return `rotateX(${-degrees}deg)`;
-  if (face === "L") return `rotateX(${degrees}deg)`;
+  if (face === "U") return `rotateY(${-degrees}deg)`;
+  if (face === "D") return `rotateY(${degrees}deg)`;
+  if (face === "R") return `rotateX(${degrees}deg)`;
+  if (face === "L") return `rotateX(${-degrees}deg)`;
   if (face === "F") return `rotateZ(${degrees}deg)`;
   return `rotateZ(${-degrees}deg)`;
 }

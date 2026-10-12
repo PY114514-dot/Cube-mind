@@ -15,10 +15,10 @@
       <div><h1>CubeMind <span class="badge">v0.4</span></h1><div class="subtitle">CFOP 复盘与专项训练</div></div>
     </div>
     <div class="header-actions">
-      <button id="btn-open-agent" title="打开 AI 教练">AI 教练</button>
-      <button id="btn-open-library" class="ghost">公式库</button>
-      <button id="btn-open-practice-mode" class="ghost">练习模式</button>
-      <button id="btn-open-settings" class="ghost">设置</button>
+      <button id="btn-open-agent" class="ghost coach-nav" title="打开 AI 教练"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/></svg>AI 教练</button>
+      <button id="btn-open-library" class="ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7v16H4V4Zm9 1 6-1 2 15-6 1-2-15ZM7 8h1m-1 4h1"/></svg>公式库</button>
+      <button id="btn-open-practice-mode" class="ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".5"/></svg>练习模式</button>
+      <button id="btn-open-settings" class="ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2" fill="var(--ivory)"/><circle cx="15" cy="17" r="2" fill="var(--ivory)"/></svg>设置</button>
       <details class="connection-capsule" id="connection-menu">
         <summary class="capsule-trigger" id="capsule-trigger">
           <span class="capsule-dot" id="capsule-dot"></span>
@@ -59,32 +59,20 @@
     <button id="btn-end-practice" class="danger">终止练习</button>
   </div>
 
+  <div class="workspace-heading">
+    <div><h2>训练台</h2><p>专注每一次复原</p></div>
+    <span class="session-type">3 × 3 <span>CFOP</span></span>
+  </div>
   <main id="main-content" class="training-stage">
-    <div class="timer-section" id="timer-stage">
-      <span class="timer-caption">本次复原</span>
-      <p class="inspection-status" id="inspection-status" hidden aria-live="polite"></p>
-      <div class="timer-display" id="timer-display" aria-live="polite">0.00</div>
-      <div class="cfop-phase-indicator" id="cfop-phase-indicator" aria-label="CFOP 阶段进度">
-        <span class="phase-seg" data-phase="cross">Cross</span>
-        <span class="phase-seg" data-phase="f2l">F2L</span>
-        <span class="phase-seg" data-phase="oll">OLL</span>
-        <span class="phase-seg" data-phase="pll">PLL</span>
-      </div>
-      <p class="timer-hint" id="timer-hint">转动魔方自动开始计时 · 还原后自动停止</p>
-      <div class="timer-actions">
-        <button id="btn-stop" class="ghost" disabled>停止计时</button>
-        <button id="btn-reset" class="ghost">重置</button>
-      </div>
-    </div>
-
     <div class="scramble-section" id="scramble-stage">
       <div class="scramble-heading">
         <div>
-          <h2>当前打乱</h2>
+          <h2>打乱序列</h2>
         </div>
         <div class="scramble-heading-actions">
           <button id="btn-toggle-scramble-steps" class="scramble-view-toggle" type="button">仅看剩余</button>
           <button id="btn-toggle-cross-settings" class="scramble-settings-toggle" type="button" aria-expanded="false" aria-controls="cross-training-settings" aria-label="打乱与十字训练设置" title="打乱与十字训练设置">设置</button>
+          <button id="btn-next-scramble" class="ghost" type="button">新打乱</button>
         </div>
       </div>
       <div id="cross-training-settings" class="cross-training-settings" hidden>
@@ -113,34 +101,48 @@
         </div>
       </div>
       <div class="scramble" id="scramble-text">点击生成</div>
-      <div class="scramble-action-row">
-        <button id="btn-next-scramble" class="primary">新打乱</button>
-      </div>
       <div class="cross-solution" id="cross-solution" hidden></div>
       <div class="xcross-solution" id="xcross-solution" hidden></div>
     </div>
 
+    <div class="timer-section" id="timer-stage">
+      <span class="timer-caption">本次用时 <span>秒</span></span>
+      <p class="inspection-status" id="inspection-status" hidden aria-live="polite"></p>
+      <div class="timer-display" id="timer-display" aria-live="polite">0.00</div>
+      <div class="cfop-phase-indicator" id="cfop-phase-indicator" aria-label="CFOP 阶段进度">
+        <span class="phase-seg" data-phase="cross">Cross</span>
+        <span class="phase-seg" data-phase="f2l">F2L</span>
+        <span class="phase-seg" data-phase="oll">OLL</span>
+        <span class="phase-seg" data-phase="pll">PLL</span>
+      </div>
+      <p class="timer-hint" id="timer-hint">转动自动计时，还原自动停止</p>
+      <div class="timer-actions">
+        <button id="btn-stop" class="ghost" disabled>停止计时</button>
+        <button id="btn-reset" class="ghost">重置</button>
+      </div>
+    </div>
+
     <div class="stage-cube">
       <div class="cube-panel-heading">
-        <div><span class="cube-panel-label">3 × 3</span><h2>实时魔方</h2></div>
-        <button id="btn-open-connection" class="ghost" type="button" aria-controls="connection-menu">连接魔方</button>
+        <h2>实时魔方</h2>
+        <button id="btn-open-connection" type="button" aria-controls="connection-menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></svg>连接魔方</button>
       </div>
       <div id="cube-3d"></div>
       <div class="cube-panel-footer">
-        <p>拖动旋转 · 方向键调整视角</p>
+        <p>拖动旋转 · 方向键微调</p>
         <button id="btn-calibrate-gyro" class="ghost gyro-calibrate" type="button" title="将实体魔方摆成白上、黄下后点击">校准持握</button>
       </div>
     </div>
 
     <div class="session-stats" id="session-stats">
       <div class="quick-stat"><span>上一把</span><strong id="stat-last">—</strong></div>
-      <div class="quick-stat"><span>平均 AO5</span><strong id="stat-ao5">—</strong></div>
-      <div class="quick-stat"><span>本组次数</span><strong id="stat-count">0</strong></div>
+      <div class="quick-stat"><span>AO5</span><strong id="stat-ao5">—</strong></div>
+      <div class="quick-stat"><span>本组完成</span><strong id="stat-count">0</strong></div>
     </div>
   </main>
 
   <section class="training-dashboard" aria-labelledby="training-dashboard-title">
-    <div class="training-dashboard-heading"><h2 id="training-dashboard-title">下一项训练</h2><span>从实战发现弱项，练习后继续观察</span></div>
+    <div class="training-dashboard-heading"><h2 id="training-dashboard-title">下一项训练</h2><span>练习弱项，再回到实战</span></div>
     <div id="training-dashboard"></div>
   </section>
 

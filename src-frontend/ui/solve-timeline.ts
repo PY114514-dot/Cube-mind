@@ -3,6 +3,7 @@
 import type { AnalysisInput } from "../agent/types.ts";
 import { resolvePersistedSolveTrust } from "../core/solve-validation.ts";
 import { buildReplayTimestamps } from "../core/solve-replay-timing.ts";
+import { formatF2lSlotForWhiteBottom, getSolveTargetFace } from "../core/solve-notation.ts";
 
 export interface TimelineSegment {
   label: string;
@@ -41,6 +42,7 @@ const STAGE_COLORS = {
 /** 将结果压缩成用户可读的阶段块，F2L 优先按真实槽位完成顺序拆为 1–4 对。 */
 export function buildTimelineSegments(solve: AnalysisInput): TimelineSegment[] {
   const segments: TimelineSegment[] = [];
+  const targetFace = getSolveTargetFace(solve.scramble, solve.moves);
   addSegment(segments, "Cross", solve.crossDuration, STAGE_COLORS.cross, `${solve.crossMoves} 步`, 0);
 
   const slots = (solve.f2lSlots ?? [])
@@ -55,7 +57,7 @@ export function buildTimelineSegments(solve: AnalysisInput): TimelineSegment[] {
       `F2L-${order}`,
       slot.duration ?? 0,
       STAGE_COLORS.f2l[Math.min(Math.max(order - 1, 0), STAGE_COLORS.f2l.length - 1)],
-      `${slot.slot} 槽 · ${slot.moves ?? 0} 步`,
+      `${targetFace ? formatF2lSlotForWhiteBottom(slot.slot, targetFace) : slot.slot} 槽 · ${slot.moves ?? 0} 步`,
       slot.completedAtMove === undefined ? undefined : slotStart,
     );
     slotStart = slot.completedAtMove ?? NaN;

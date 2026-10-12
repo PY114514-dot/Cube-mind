@@ -2,7 +2,7 @@ import type {
   AnalysisInput, AnalysisSolve, AnalysisBaseline, AnalysisIssue, CaseEvent,
 } from "./analysis-types.ts";
 
-export const MAX_ANALYSIS_SOLVES = 30;
+export const MAX_ANALYSIS_SOLVES = 100;
 const MIN_BASELINE_SAMPLES = 3;
 const STAGES = [
   { name: "Cross", duration: "crossDuration", moves: "crossMoves" },

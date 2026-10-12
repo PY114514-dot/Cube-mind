@@ -101,7 +101,7 @@ function showCompletedAnalysis(
   if (detailTitle) detailTitle.hidden = isFocusedFormulaPractice;
   els.cfopOutput.hidden = isFocusedFormulaPractice;
   els.cfopOutput.textContent = cfopResult && f2lSlotAnalysis
-    ? `总用时: ${(deps.timer.getDuration() / 1000).toFixed(2)}s\n${formatCfop(cfopResult)}\n\n${formatF2lSlotAnalysis(f2lSlotAnalysis)}`
+    ? `${formatCfop(cfopResult, f2lSlotAnalysis.targetFace)}\n\n${formatF2lSlotAnalysis(f2lSlotAnalysis)}`
     : getUnavailableCfopMessage(trust.state, physicalState);
   els.cfopModal.classList.add("open");
   if (cfopResult) deps.log(`CFOP 识别完成: ${cfopResult.segments.length} 个阶段`);

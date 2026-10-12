@@ -1,8 +1,8 @@
 /** 实战 F2L 槽位进度追踪：判断槽位完成与回退，并用本地签名表识别公式 case 编号。 */
 
 import { CubieCube, parseMove } from "../utils/mathlib.ts";
-import { isCrossSolved } from "./cross-solver.ts";
 import { recognizeF2lCaseFromCube } from "./f2l-case-recognizer.ts";
+import { formatMovesForWhiteBottom, formatF2lSlotForWhiteBottom, getCrossTarget } from "./solve-notation.ts";
 
 export interface F2lSlotReview {
   slot: "FR" | "FL" | "BL" | "BR";
@@ -43,27 +43,6 @@ const F2L_CASE_FAMILY_LABELS: Record<F2lCaseFamily, string> = {
 /** F2L family 的界面术语；内部英文枚举保留给签名表和 AI 证据使用。 */
 export function formatF2lCaseFamily(family: F2lCaseFamily): string {
   return F2L_CASE_FAMILY_LABELS[family];
-}
-
-const WHITE_BOTTOM_MOVE_MAP: Record<string, string> = {
-  U: "D", D: "U", R: "L", L: "R", F: "F", B: "B",
-};
-
-const WHITE_BOTTOM_SLOT_MAP: Record<F2lSlotReview["slot"], F2lSlotReview["slot"]> = {
-  FR: "FL", FL: "FR", BL: "BR", BR: "BL",
-};
-
-/**
- * 主舞台白面在 U 面时，设备面码会以白顶坐标输出；F2L 复盘改为竞速玩家习惯的白底记谱。
- * 数学回放仍使用原始动作，只有展示层转换，不能影响 CFOP/CASE 识别。
- */
-export function formatF2lMovesForWhiteBottom(moves: string[], targetFace: "U" | "D"): string[] {
-  if (targetFace === "D") return [...moves];
-  return moves.map((move) => `${WHITE_BOTTOM_MOVE_MAP[move[0]?.toUpperCase()] ?? move[0]}${move.slice(1)}`);
-}
-
-export function formatF2lSlotForWhiteBottom(slot: F2lSlotReview["slot"], targetFace: "U" | "D"): F2lSlotReview["slot"] {
-  return targetFace === "U" ? WHITE_BOTTOM_SLOT_MAP[slot] : slot;
 }
 
 export interface F2lSlotAnalysis {
@@ -107,17 +86,12 @@ export function analyzeF2lSlots(
   pauseThreshold: number,
 ): F2lSlotAnalysis | null {
   let cube = applyMoves(CubieCube.SOLVED, scrambleMoves);
-  let targetFace = findCrossTarget(cube);
+  let targetFace = getCrossTarget(cube);
   let crossCompletedAtMove: number | undefined = targetFace ? 0 : undefined;
   let definitions = targetFace === "U" ? U_SLOT_DEFINITIONS : D_SLOT_DEFINITIONS;
   let crossDuration = 0;
   const slots = D_SLOT_DEFINITIONS.map(createSlotReview);
-  const slotSolvedState: Record<F2lSlotReview["slot"], boolean> = {
-    FR: false,
-    FL: false,
-    BL: false,
-    BR: false,
-  };
+  const slotSolvedState: Record<F2lSlotReview["slot"], boolean> = { FR: false, FL: false, BL: false, BR: false };
   let lastCompletionMove = 0;
   let lastCompletionTime = solveStartTime;
   let completionOrder = 0;
@@ -136,7 +110,7 @@ export function analyzeF2lSlots(
     const completedMoves = index + 1;
     const timestamp = moveTimes[index] ?? solveStartTime;
     if (crossCompletedAtMove === undefined) {
-      targetFace = findCrossTarget(cube);
+      targetFace = getCrossTarget(cube);
       if (!targetFace) continue;
       definitions = targetFace === "U" ? U_SLOT_DEFINITIONS : D_SLOT_DEFINITIONS;
       crossCompletedAtMove = completedMoves;
@@ -280,8 +254,8 @@ export function formatF2lSlotAnalysis(analysis: F2lSlotAnalysis | null): string 
       ? ` · ${slot.caseId}`
       : slot.caseFamily && slot.caseFamily !== "unknown" ? ` · ${formatF2lCaseFamily(slot.caseFamily)}` : "";
     const displaySlot = formatF2lSlotForWhiteBottom(slot.slot, analysis.targetFace);
-    const displayMoves = slot.moveSequence ? formatF2lMovesForWhiteBottom(slot.moveSequence, analysis.targetFace) : [];
-    lines.push(`${pairLabel} (${displaySlot})${caseLabel} · ${((slot.duration ?? 0) / 1000).toFixed(2)}s · ${slot.moves ?? 0}步${pauses}`);
+    const displayMoves = slot.moveSequence ? formatMovesForWhiteBottom(slot.moveSequence, analysis.targetFace) : [];
+    lines.push(`${pairLabel} (${displaySlot})${caseLabel} · ${slot.moves ?? 0}步${pauses}`);
     lines.push(`  转动: ${displayMoves.join(" ") || "—"}`);
   }
   return lines.join("\n");
@@ -310,12 +284,6 @@ function classifyF2lCaseFamily(
     return { family: "Disconnected Pairs", confidence: "family", reason: "目标角块和棱块均在最后一层，尚未成对" };
   }
   return { family: "unknown", confidence: "unknown", reason: "局部状态不满足可靠的标准或被困分类" };
-}
-
-function findCrossTarget(cube: CubieCube): "U" | "D" | null {
-  if (isCrossSolved(cube, "U")) return "U";
-  if (isCrossSolved(cube, "D")) return "D";
-  return null;
 }
 
 function areAllSlotsCompleted(slots: F2lSlotReview[]): boolean {

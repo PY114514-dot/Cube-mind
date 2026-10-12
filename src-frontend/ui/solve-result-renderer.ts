@@ -56,7 +56,6 @@ function buildPracticeMetrics(
   return [
     practiceMetric("识别", current.recognitionDuration ?? 0, previous?.recognitionDuration),
     practiceMetric("执行", current.executionDuration ?? stageDuration, previous?.executionDuration ?? previousStageDuration),
-    practiceMetric(category, stageDuration, previousStageDuration),
   ];
 }
 

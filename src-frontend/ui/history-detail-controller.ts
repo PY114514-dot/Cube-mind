@@ -2,6 +2,7 @@ import type { AnalysisInput } from "../agent/types.ts";
 import { presentSolveQuality } from "../core/data-quality.ts";
 import { formatWcaSolveTime } from "../core/wca-average.ts";
 import { SolveReplayPlayer } from "./solve-replay-player.ts";
+import { formatMovesForWhiteBottom, getSolveTargetFace } from "../core/solve-notation.ts";
 
 export interface HistoryDetailElements {
   detail: HTMLDivElement;
@@ -21,8 +22,9 @@ export class HistoryDetailController {
   render(solve: AnalysisInput, showSolution: boolean): void {
     this.close();
     const scramble = solve.scramble || "旧记录未保存打乱";
+    const targetFace = getSolveTargetFace(solve.scramble, solve.moves);
     const solution = showSolution
-      ? (solve.moves?.join(" ") || "旧记录未保存解法序列")
+      ? (solve.moves && targetFace ? formatMovesForWhiteBottom(solve.moves, targetFace).join(" ") : solve.moves?.join(" ")) || "未保存解法序列"
       : "点击\"查看解法\"显示本次还原步骤。";
     const inspectionValue = solve.inspectionDuration ? `${(solve.inspectionDuration / 1000).toFixed(2)}s` : "—";
     const detailMetrics = this.isDetailedScoreMode()
@@ -40,7 +42,7 @@ export class HistoryDetailController {
       </div>
       <div class="history-sequence"><span>数据可信度</span><strong>${escapeHtml(quality.label)}</strong><code>${escapeHtml(quality.description)}</code></div>
       <div class="history-sequence"><span>打乱</span><code>${escapeHtml(scramble)}</code></div>
-      <div class="history-sequence"><span>解法</span><code>${escapeHtml(solution)}</code></div>
+      <div class="history-sequence"><span>解法${targetFace === "U" ? " · 白底记谱" : " · 原始记谱"}</span><code>${escapeHtml(solution)}</code></div>
       ${showSolution && solve.scramble && solve.moves?.length ? '<div class="history-replay" data-history-replay></div>' : ""}
     `;
     const replayRoot = this.elements.detail.querySelector<HTMLElement>("[data-history-replay]");

@@ -33,8 +33,9 @@ export class TestCubeElement extends EventTarget {
       ...child.querySelectorAll(selector),
     ]);
   }
-  animate(): EventTarget {
-    const animation = Object.assign(new EventTarget(), { cancel: () => undefined });
+  animate(keyframes: Keyframe[]): EventTarget {
+    const animation = Object.assign(new EventTarget(), { cancel: () => undefined, updatePlaybackRate: () => undefined });
+    animation.addEventListener("finish", () => { this.style.transform = String(keyframes[keyframes.length - 1].transform); });
     this.animations.push(animation);
     return animation;
   }

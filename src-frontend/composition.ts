@@ -328,7 +328,7 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
     },
     phaseIndicator: {
       show: (phase) => phaseIndicatorController.show(phase),
-      complete: () => phaseIndicatorController.complete(),
+      complete: (phase) => phaseIndicatorController.complete(phase),
     },
     closeResultModals: () => closeResultModals(),
     log,

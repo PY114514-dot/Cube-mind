@@ -56,7 +56,7 @@ export class TimerDisplayController {
 
   updateDisplay(): void {
     const ms = this.timer.getDuration();
-    this.els.timerDisplay.textContent = `${(ms / 1000).toFixed(2)}s`;
+    this.els.timerDisplay.textContent = (ms / 1000).toFixed(2);
   }
 
   startDisplay(): void {
@@ -91,7 +91,7 @@ export class TimerDisplayController {
       this._inspectionMode = "ready";
       this.els.inspectionStatus.hidden = false;
       this.els.inspectionStatus.textContent = "准备就绪 · 转动第一步后开始计时";
-      this.els.timerDisplay.textContent = "0.00s";
+      this.els.timerDisplay.textContent = "0.00";
       this.cb.log("打乱完成：转动第一步开始计时");
       return;
     }

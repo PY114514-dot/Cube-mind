@@ -29,36 +29,36 @@ export interface AnalysisControllerOptions {
 }
 
 function showSampleNotice(elements: AnalysisControllerElements, count: number): void {
-  elements.analysisSampleStatus.textContent = getAnalysisSampleNotice(count);
+  elements.analysisSampleStatus.textContent = `${getAnalysisSampleNotice(count)} 分析窗口上限 ${MAX_ANALYSIS_SOLVES} 把，实际使用已有的有效常规成绩。`;
   elements.analysisSampleStatus.className = count <= 0 ? "sample-notice error" : count < 5 ? "sample-notice warning" : "sample-notice info";
 }
 
 export function bindAnalysisController(options: AnalysisControllerOptions): void {
   const { elements, getRecords, renderResult, log, onBeforeAnalyze, onAfterAnalyze, onModalOpen } = options;
   const selectedScope = (): number => {
-    const validCount = Math.min(MAX_ANALYSIS_SOLVES, getAnalysisEligibleSolves(getRecords()).length);
-    return Math.min(validCount, Math.max(1, Math.floor(Number(elements.analysisCount.value)) || 1));
+    return Math.min(MAX_ANALYSIS_SOLVES, Math.max(1, Math.floor(Number(elements.analysisCount.value)) || 1));
   };
-  elements.analysisCount.oninput = () => showSampleNotice(elements, selectedScope());
+  elements.analysisCount.max = String(MAX_ANALYSIS_SOLVES);
+  elements.analysisCount.oninput = () => showSampleNotice(elements, Math.min(selectedScope(), getAnalysisEligibleSolves(getRecords()).length));
   elements.btnOpenAgent.onclick = () => {
     const validCount = Math.min(MAX_ANALYSIS_SOLVES, getAnalysisEligibleSolves(getRecords()).length);
-    elements.analysisCount.max = String(Math.max(1, validCount));
     elements.analysisCount.value = String(Math.min(12, validCount || 1));
-    showSampleNotice(elements, selectedScope());
+    showSampleNotice(elements, Math.min(selectedScope(), validCount));
     elements.agentModal.classList.add("open");
     elements.agentBackdrop.classList.add("open");
     if (onModalOpen) onModalOpen();
   };
   elements.btnRunAnalysis.onclick = async () => {
-    const scope = selectedScope();
+    const requestedScope = selectedScope();
+    const input = createHistoryAnalysisInput(getRecords(), requestedScope);
+    const scope = input?.analysisScope ?? 0;
     showSampleNotice(elements, scope);
-    const input = createHistoryAnalysisInput(getRecords(), scope);
     if (!input) {
       elements.agentOutput.innerHTML = '<p class="placeholder">请先完成至少一把，才可以分析历史数据。</p>';
       return;
     }
     if (onBeforeAnalyze) onBeforeAnalyze(input);
-    elements.analysisCount.value = String(scope);
+    elements.analysisCount.value = String(requestedScope);
     elements.btnRunAnalysis.disabled = true;
     elements.btnRunAnalysis.textContent = "分析中…";
     // 状态动画：脉冲圆点 + 随生成进度推进的阶段文案，不回显原始流式文本。

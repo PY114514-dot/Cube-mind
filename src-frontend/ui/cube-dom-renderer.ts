@@ -15,7 +15,6 @@ import {
   getManualViewRotation,
   getManualYawAfterDrag,
   rotateCubiePosition,
-  shouldFastForwardTurnAnimation,
   type FaceTurnAnimation,
 } from "./cube-view-rotation.ts";
 import { COLOR_SCHEMES, type CubeColorScheme } from "./cube-visualizer-types.ts";
@@ -109,17 +108,11 @@ export class CubeDomRenderer {
     this.resetCubieGeometry();
   }
 
-  /** 按动画吞吐决定排队播放或快进；facelets 为动作提交后的最新局面。 */
+  /** 快速通知通过加速转层追上设备；不在尚未转到位时覆盖颜色。 */
   applyTurn(animation: FaceTurnAnimation, facelets: string): void {
-    // 设备动作快于 CSS 转层时，继续逐帧排队只会让画面滞后，并可能在结束时残留转层容器。
-    // 此时直接提交最新状态，下一次动作再恢复轻量动画。
-    if (shouldFastForwardTurnAnimation(this.isAnimatingTurn, this.turnQueue.length)) {
-      this.reset();
-      this.updateFacelets(facelets);
-      return;
-    }
     this.turnQueue.push({ animation, facelets });
     this.playNextTurn();
+    this.accelerateTurn();
   }
 
   /** 不播放动画地提交转层几何，用于打乱起点和复盘跳转。 */
@@ -312,25 +305,23 @@ export class CubeDomRenderer {
       if (generation !== this.animationGeneration) return;
       if (this.turnFallbackTimer !== null) window.clearTimeout(this.turnFallbackTimer);
       this.turnFallbackTimer = null;
+      // 末帧继续保留整个层的旋转。提前拆容器会使贴纸先回到旧朝向，再在下一帧染色。
+      overlay.style.transform = targetTransform;
+      this.activeAnimation?.cancel();
       this.activeAnimation = null;
-      // 先仅提交九个 cubie 的几何位置并移回主容器，保留它们动画期间的旧面。
-      // 若这里同时重建面片、刷新 facelets，Chromium 会把它们合成到动画末帧，
-      // 视觉上就像没有实体转层、只发生了一次染色。
-      movingCubies.forEach((cubie) => {
-        const position = getCubiePosition(cubie);
-        const next = rotateCubiePosition(position, turn.animation);
-        setCubiePosition(cubie, next);
-        this.cube?.appendChild(cubie);
-      });
-      overlay.remove();
-      if (this.activeOverlay === overlay) this.activeOverlay = null;
       deferTurnStateCommit(
         window.requestAnimationFrame.bind(window),
         () => generation === this.animationGeneration,
         () => {
-          // 独立绘制帧才重建朝向并同步新局面，使用户看到的是九块完整转过 90°。
-          movingCubies.forEach((cubie) => renderCubieFaces(cubie, getCubiePosition(cubie)));
+          movingCubies.forEach((cubie) => {
+            const next = rotateCubiePosition(getCubiePosition(cubie), turn.animation);
+            setCubiePosition(cubie, next);
+            renderCubieFaces(cubie, next);
+            this.cube?.appendChild(cubie);
+          });
           this.updateFacelets(turn.facelets);
+          overlay.remove();
+          if (this.activeOverlay === overlay) this.activeOverlay = null;
           this.isAnimatingTurn = false;
           this.playNextTurn();
         },
@@ -343,6 +334,7 @@ export class CubeDomRenderer {
       { transform: targetTransform },
     ], { duration, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards" });
     this.activeAnimation = animation;
+    this.accelerateTurn();
     animation.addEventListener("finish", () => {
       finish();
     }, { once: true });
@@ -351,6 +343,11 @@ export class CubeDomRenderer {
 
   private animationDuration(defaultDuration: number): number {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : defaultDuration;
+  }
+
+  private accelerateTurn(): void {
+    // ponytail: 普通 160ms 转层最高四倍速；持续超过绘制吞吐时会排队，更高 TPS 需求需缩短动画预算。
+    this.activeAnimation?.updatePlaybackRate(Math.min(4, this.turnQueue.length + 1));
   }
 
   private renderCubie(cube: HTMLElement, x: number, y: number, z: number): void {

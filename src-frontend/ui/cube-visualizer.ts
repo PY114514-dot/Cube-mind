@@ -141,7 +141,6 @@ export class CubeVisualizer {
 export { CubeVisualizerRole, getCubeVisualizerCapabilities } from "./cube-visualizer-types.ts";
 export {
   getFaceTurnAnimation,
-  shouldFastForwardTurnAnimation,
   getDeviceViewRotation,
   getOrientationSmoothingFactor,
   getManualViewRotation,

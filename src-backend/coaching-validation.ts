@@ -4,6 +4,8 @@ import { isRecord, isNonNegativeNumber, isMoveCount } from "./validation-values.
 
 const STAGES = new Set(["Cross", "F2L", "OLL", "PLL"]);
 const CASE_STAGES = new Set(["F2L", "OLL", "PLL"]);
+// 百把基准可能覆盖整个 CFOP 公式库，不能沿用小窗口的 60 种上限。
+const MAX_BASELINE_CASES = 41 + 57 + 21;
 
 function isFormula(value: unknown): value is Record<string, unknown> & { stage: CaseBaseline["stage"]; formulaId: string } {
   return isRecord(value) && typeof value.stage === "string" && CASE_STAGES.has(value.stage)
@@ -12,7 +14,7 @@ function isFormula(value: unknown): value is Record<string, unknown> & { stage: 
 
 export function parseAnalysisBaseline(value: unknown): AnalysisBaseline | undefined {
   if (!isRecord(value) || !isMoveCount(value.sampleCount) || value.sampleCount > MAX_ANALYSIS_SOLVES
-    || !Array.isArray(value.stages) || value.stages.length > 4 || !Array.isArray(value.cases) || value.cases.length > 60) return undefined;
+    || !Array.isArray(value.stages) || value.stages.length > 4 || !Array.isArray(value.cases) || value.cases.length > MAX_BASELINE_CASES) return undefined;
   const stages = value.stages.map((entry): StageBaseline | null => {
     if (!isRecord(entry) || typeof entry.stage !== "string" || !STAGES.has(entry.stage)
       || !isMoveCount(entry.sampleCount) || entry.sampleCount > Number(value.sampleCount) || !isNonNegativeNumber(entry.duration)) return null;
