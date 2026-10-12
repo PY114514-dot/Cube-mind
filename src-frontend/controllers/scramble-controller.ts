@@ -18,7 +18,6 @@ export interface ScrambleControllerElements {
   btnNextScramble: HTMLButtonElement;
   btnToggleScrambleSteps: HTMLButtonElement;
   crossStepSelector: HTMLElement;
-  btnStart: HTMLButtonElement;
   btnStop: HTMLButtonElement;
 }
 
@@ -175,7 +174,6 @@ function loadGeneratedScramble(context: ScrambleContext, scramble: string): void
   timerDisplay.endInspection();
   timerDisplay.stopDisplay();
   timerDisplay.updateDisplay();
-  els.btnStart.disabled = true;
   els.btnStop.disabled = true;
   renderProgress(context);
   void sendDiagnosticEvent({ kind: "scramble", occurredAt: Date.now(), scramble: state.scramble.currentScramble, mode: "normal" });
@@ -235,7 +233,6 @@ function prepareBlockScramble(context: ScrambleContext, mode: "cross" | "f2l" | 
   timerDisplay.endInspection();
   timerDisplay.stopDisplay();
   timerDisplay.updateDisplay();
-  els.btnStart.disabled = true;
   els.btnStop.disabled = true;
   renderProgress(context);
   void sendDiagnosticEvent({ kind: "scramble", occurredAt: Date.now(), scramble: state.scramble.currentScramble, mode });
@@ -260,7 +257,6 @@ function preparePracticeScramble(context: ScrambleContext): void {
   timerDisplay.endInspection();
   timerDisplay.stopDisplay();
   timerDisplay.updateDisplay();
-  els.btnStart.disabled = true;
   els.btnStop.disabled = true;
   state.practice.needsRetry = false;
   state.practice.caseVerified = false;
@@ -356,7 +352,6 @@ function retryHistoryScramble(context: ScrambleContext, scramble: string): void 
   timer.reset();
   timerDisplay.stopDisplay();
   timerDisplay.updateDisplay();
-  els.btnStart.disabled = false;
   els.btnStop.disabled = true;
   cubeVisualizer.reset();
   renderProgress(context);

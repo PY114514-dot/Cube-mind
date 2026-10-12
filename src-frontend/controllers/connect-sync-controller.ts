@@ -13,7 +13,6 @@ import { SOLVED_FACELET } from "../utils/mathlib.ts";
 
 /** 复位需要操作的按钮 */
 export interface ConnectSyncElements {
-  btnStart: HTMLButtonElement;
   btnStop: HTMLButtonElement;
 }
 
@@ -48,7 +47,6 @@ export function createConnectSyncController(
     state.solve.lastDeviceMoveCnt = undefined;
     timerDisplay.stopDisplay();
     timerDisplay.updateDisplay();
-    els.btnStart.disabled = false;
     els.btnStop.disabled = true;
     cubeVisualizer.reset();
     void scramble.newScramble();

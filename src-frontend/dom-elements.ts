@@ -95,7 +95,6 @@ export const els = {
   inspectionStatus: $("inspection-status") as HTMLParagraphElement,
   cfopPhaseIndicator: $("cfop-phase-indicator") as HTMLDivElement,
   timerHint: $("timer-hint") as HTMLParagraphElement,
-  btnStart: $("btn-start") as HTMLButtonElement,
   btnStop: $("btn-stop") as HTMLButtonElement,
   btnReset: $("btn-reset") as HTMLButtonElement,
   cfopOutput: $("cfop-output") as HTMLPreElement,

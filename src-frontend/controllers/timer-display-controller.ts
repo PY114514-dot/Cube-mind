@@ -12,7 +12,6 @@ export type InspectionMode = "idle" | "limited" | "free" | "ready";
 export interface TimerDisplayElements {
   timerDisplay: HTMLElement;
   inspectionStatus: HTMLElement;
-  btnStart: HTMLButtonElement;
 }
 
 export interface TimerDisplayCallbacks {
@@ -20,8 +19,6 @@ export interface TimerDisplayCallbacks {
   isPracticeObservation: () => boolean;
   /** 读取观察期设置 */
   getInspectionSettings: () => { enabled: boolean; seconds: number };
-  /** 切换到计时阶段 UI（隐藏 scramble 区域） */
-  onShowTimerStage: () => void;
   /** 日志 */
   log: (message: string, level?: "info" | "move" | "error") => void;
 }
@@ -32,7 +29,6 @@ export class TimerDisplayController {
   private cb: TimerDisplayCallbacks;
 
   private _inspectionMode: InspectionMode = "idle";
-  private inspectionEndsAt = 0;
   private inspectionInterval: number | null = null;
   private inspectionStartedAt = 0;
   private pendingPenalty: InspectionPenalty = "none";
@@ -78,14 +74,11 @@ export class TimerDisplayController {
   // ====== 观察期状态机 ======
 
   beginInspection(): void {
-    this.cb.onShowTimerStage();
-    this.els.btnStart.disabled = true;
     this.pendingPenalty = "none";
     this.inspectionStartedAt = 0;
 
     if (this.cb.isPracticeObservation()) {
       this._inspectionMode = "free";
-      this.inspectionEndsAt = 0;
       this.els.inspectionStatus.hidden = false;
       this.els.inspectionStatus.textContent = "自由观察 · 转动第一步后开始计时";
       this.els.timerDisplay.textContent = "观察";
@@ -105,7 +98,6 @@ export class TimerDisplayController {
 
     this._inspectionMode = "limited";
     this.inspectionStartedAt = Date.now();
-    this.inspectionEndsAt = this.inspectionStartedAt + settings.seconds * 1000;
     this.renderCountdown();
     this.inspectionInterval = window.setInterval(() => this.renderCountdown(), 50);
     this.cb.log(`进入 ${settings.seconds} 秒观察：转动第一步开始计时`);
@@ -129,7 +121,6 @@ export class TimerDisplayController {
   endInspection(): void {
     this.stopCountdown();
     this._inspectionMode = "idle";
-    this.inspectionEndsAt = 0;
     this.inspectionStartedAt = 0;
     this.els.inspectionStatus.hidden = true;
     this.els.inspectionStatus.textContent = "";

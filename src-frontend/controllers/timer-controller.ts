@@ -11,7 +11,6 @@ import type { Timer } from "../core/timer.ts";
 
 /** 计时控制器所需 DOM 元素 */
 export interface TimerControllerElements {
-  btnStart: HTMLButtonElement;
   btnStop: HTMLButtonElement;
   btnReset: HTMLButtonElement;
   cfopOutput: HTMLElement;
@@ -62,7 +61,6 @@ async function finalizeSolve(
     await new Promise<void>((resolve) => window.setTimeout(resolve, waitForLateMove ? 600 : 420));
     if (signal.aborted || timer.getState() !== timerState || !timerState.isRunning) return;
     timer.stop(stopRequestedAt);
-    els.btnStart.disabled = false;
     els.btnStop.disabled = true;
     timerDisplay.stopDisplay();
     timerDisplay.updateDisplay();
@@ -86,7 +84,6 @@ function resetTimerSession(els: TimerControllerElements, state: AppState, deps: 
   state.practice.awaitingNextScramble = false;
   state.practice.postSolveMoves = [];
   timerDisplay.updateDisplay();
-  els.btnStart.disabled = false;
   els.btnStop.disabled = true;
   els.cfopOutput.textContent = "（等待本次解法）";
   els.agentOutput.innerHTML = "<p class=\"placeholder\">完成一次解法后，AI 分析会显示在这里</p>";
@@ -135,7 +132,6 @@ export function createTimerController(
     state.solve.events = [];
     state.solve.hasPermanentMoveGap = false;
     state.solve.lastDeviceMoveCnt = undefined;
-    els.btnStart.disabled = true;
     els.btnStop.disabled = false;
     timerDisplay.startDisplay();
     log("Timer started");
@@ -162,7 +158,6 @@ export function createTimerController(
     timer.stop();
     timerDisplay.stopDisplay();
     timerDisplay.updateDisplay();
-    els.btnStart.disabled = false;
     els.btnStop.disabled = true;
     phaseIndicator.reset();
     log(`⚠ ${deviceName} 连接已断开，本把成绩已作废。请重连后重新开始。`, "error");
@@ -174,9 +169,6 @@ export function createTimerController(
   }
 
   function init(): void {
-    els.btnStart.onclick = () => {
-      startSolveTimer();
-    };
     els.btnStop.onclick = () => {
       void stopSolveTimerAndAnalyze(true);
     };

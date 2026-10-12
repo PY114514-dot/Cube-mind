@@ -250,7 +250,6 @@ function setupTimerRuntime(deps: SolvePipelineDeps, onSolveComplete: (signal: Ab
 
   const timerController = createTimerController(
     {
-      btnStart: els.btnStart,
       btnStop: els.btnStop,
       btnReset: els.btnReset,
       cfopOutput: els.cfopOutput,
@@ -336,7 +335,7 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
   });
 
   const connectSyncController = createConnectSyncController(
-    { btnStart: els.btnStart, btnStop: els.btnStop },
+    { btnStop: els.btnStop },
     state,
     {
       timer,

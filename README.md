@@ -214,8 +214,8 @@ npx tsx --test src-frontend/__tests__/*.test.ts
 
 | 套件 | 通过/总数 |
 |------|----------|
-| 全部 node:test 套件 | **493/493** |
-| **总计** | **493 · 0 失败（2026-10-11）** |
+| 全部 node:test 套件 | **495/495** |
+| **总计** | **495 · 0 失败（2026-10-12）** |
 
 ## 🔧 技术栈
 
@@ -258,7 +258,9 @@ AI 教练中选择最近的分析把数；页面会区分阶段均值、最近�
 
 连续重试会保留上一把未还原局面；下一轮的过渡动作与历史回放均从同一个绝对起点构建。成绩结束后的额外动作也会带入下一轮，避免正确公式被误判为失败。主页面两列等宽，计时标题与数字同轴；桌面与手机均保持居中。
 
-最新 UI 验证见 [Day 39 模拟训练工具栏改版](doc/03-dev-log/daily-log/day-39.md)。无设备验收与逻辑修复见 [Day 38](doc/03-dev-log/daily-log/day-38.md)，连续训练与 3D 触点修复见 [Day 37](doc/03-dev-log/daily-log/day-37.md)。AI 解法参照见 [Day 36](doc/03-dev-log/daily-log/day-36.md)，自定义编辑与阶段时间轴见 [Day 35](doc/03-dev-log/daily-log/day-35.md)，实速回放见 [Day 34](doc/03-dev-log/daily-log/day-34.md)，AI 流式链路的模拟模型验证见 [Day 33](doc/03-dev-log/daily-log/day-33.md)。
+主页面采用深色计时卡、浅色魔方展示区和统一统计栏。计时由转动第一步自动开始，空格可停止当前计时；在公式输入、表单和按钮上按空格会保留控件自身行为。默认颜色为「极简白」，也可在设置中选择深海蓝、森林绿或紫罗兰。
+
+最新验证见 [Day 40 主页面改版与快捷键修复](doc/03-dev-log/daily-log/day-40.md)。模拟工具栏见 [Day 39](doc/03-dev-log/daily-log/day-39.md)，无设备验收与逻辑修复见 [Day 38](doc/03-dev-log/daily-log/day-38.md)，连续训练与 3D 触点修复见 [Day 37](doc/03-dev-log/daily-log/day-37.md)。AI 解法参照见 [Day 36](doc/03-dev-log/daily-log/day-36.md)，自定义编辑与阶段时间轴见 [Day 35](doc/03-dev-log/daily-log/day-35.md)，实速回放见 [Day 34](doc/03-dev-log/daily-log/day-34.md)，AI 流式链路的模拟模型验证见 [Day 33](doc/03-dev-log/daily-log/day-33.md)。
 
 ### GAN v4 姿态诊断采样
 

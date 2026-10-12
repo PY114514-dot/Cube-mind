@@ -3,33 +3,33 @@
 .plan-card.graduated { border-color: var(--success); background: #f0fdf4; }
 .practice-effect { display: grid; gap: 4px; margin-top: 12px; padding: 10px 12px; border-radius: 7px; background: #f8fafc; border: 1px solid var(--rule); color: var(--ink); text-align: left; font-size: 12px; line-height: 1.5; }
 .practice-effect strong { font-size: 13px; }
-.practice-effect span { color: var(--muted); }
+.practice-effect span { color: var(--warm-gray); }
 .practice-effect em { color: var(--success); font-style: normal; font-weight: 700; }
-.case-transfer p { margin: 7px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.case-transfer p { margin: 7px 0 0; color: var(--warm-gray); font-size: 13px; line-height: 1.55; }
 .case-transfer strong { color: var(--ink); }
-.case-coach-card { display: grid; gap: 6px; margin-bottom: 14px; padding: 14px 16px; border: 1px solid #d6b46a; border-radius: 8px; background: var(--gold-soft); }
-.case-coach-card > span { color: var(--gold); font-size: 12px; font-weight: 700; }
+.case-coach-card { display: grid; gap: 6px; margin-bottom: 14px; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 8px; background: var(--accent-soft); }
+.case-coach-card > span { color: var(--accent); font-size: 12px; font-weight: 700; }
 .case-coach-card > strong { color: var(--ink); font-family: var(--mono); font-size: 18px; }
-.case-coach-card > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.case-coach-card > p { margin: 0; color: var(--warm-gray); font-size: 13px; line-height: 1.55; }
 .case-coach-card .practice-btn { justify-self: start; margin-top: 3px; }
 .plan-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .plan-title { font-size: 13px; font-weight: 700; color: var(--ink); }
 .plan-card.graduated .plan-title { color: var(--success); }
-.plan-stage-tag { font-size: 11px; background: var(--gold-soft); color: var(--gold); padding: 2px 8px; border-radius: 10px; }
+.plan-stage-tag { font-size: 11px; background: var(--accent-soft); color: var(--accent); padding: 2px 8px; border-radius: 10px; }
 .plan-progress-bar { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
-.plan-progress-fill { height: 100%; background: var(--gold); border-radius: 3px; transition: width .4s ease; }
+.plan-progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .4s ease; }
 .plan-card.graduated .plan-progress-fill { background: var(--success); }
 .plan-today { font-size: 12px; color: var(--ink); }
 .plan-today-label { font-size: 11px; color: var(--warm-gray); margin-bottom: 4px; }
 .plan-drills { list-style: none; padding: 0; margin: 6px 0 0; }
 .plan-drills li { font-size: 12px; color: var(--warm-gray); padding: 3px 0 3px 12px; position: relative; }
-.plan-drills li::before { content: "▸"; position: absolute; left: 0; color: var(--gold); }
+.plan-drills li::before { content: "▸"; position: absolute; left: 0; color: var(--accent); }
 .plan-target { font-size: 11px; color: var(--warm-gray); margin-top: 8px; font-style: italic; }
 .plan-formulas { margin-top: 10px; }
 .plan-formulas-label { font-size: 11px; color: var(--warm-gray); margin-bottom: 6px; }
 .plan-formula-list { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .plan-formula-btn { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; font-size: 12px; line-height: 1.4; background: var(--card); border: 1px solid var(--rule); border-radius: 999px; color: var(--ink); transition: border-color .15s ease, color .15s ease; }
-.plan-formula-btn:hover { border-color: var(--gold); color: var(--gold); }
+.plan-formula-btn:hover { border-color: var(--accent); color: var(--accent); }
 .plan-formula-btn small { font-size: 11px; color: var(--warm-gray); }
 
 /* ===== 回放播放器 ===== */
@@ -44,9 +44,9 @@
 .solve-replay-timing button { min-height: 44px; margin: 0; padding: 7px 12px; }
 .solve-replay-timing span { font-variant-numeric: tabular-nums; }
 .solve-replay-player .solve-timeline { margin-top: 0; }
-.solve-replay-controls input[type="range"] { width: 100%; accent-color: var(--gold); }
+.solve-replay-controls input[type="range"] { width: 100%; accent-color: var(--accent); }
 .solve-replay-heading { display: flex; justify-content: space-between; gap: 8px; color: var(--warm-gray); font-size: 11px; }
-.solve-replay-heading strong { color: var(--gold); font-family: var(--mono); }
+.solve-replay-heading strong { color: var(--accent); font-family: var(--mono); }
 
 /* ===== 历史详情 ===== */
 .history-detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
@@ -64,20 +64,20 @@
 /* 训练选择属于工具页，使用白底和细边框，避免抢过 case 本身的视觉重点。 */
 .practice-mode-content .modal-header h2, .practice-mode-content h3 { font-family: var(--sans); }
 .practice-hero { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: center; justify-content: space-between; padding: 20px 22px; margin-bottom: 22px; border: 1px solid var(--rule); border-radius: 10px; background: #fff; box-shadow: none; }
-.practice-hero .eyebrow { color: var(--gold); }
+.practice-hero .eyebrow { color: var(--accent); }
 .practice-hero h3 { margin: 5px 0 6px; color: var(--ink); font-size: 19px; }
 .practice-hero p { margin: 0; max-width: 380px; color: var(--warm-gray); font-size: 13px; line-height: 1.7; }
-.practice-hero-btn { flex: 0 0 auto; width: auto; min-width: 190px; margin: 0; padding: 12px 20px; border: 1px solid var(--gold); border-radius: 7px; font-weight: 700; box-shadow: none; }
+.practice-hero-btn { flex: 0 0 auto; width: auto; min-width: 190px; margin: 0; padding: 12px 20px; border: 1px solid var(--accent); border-radius: 7px; font-weight: 700; box-shadow: none; }
 .practice-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 /* 两列等高：右列多出筛选行与提示语，grid 拉伸后左列内容仍不满；改为纵向 flex 让按钮网格吃掉剩余高度，两列底边对齐。 */
 .practice-mode-section { margin: 0; min-width: 0; display: flex; flex-direction: column; }
 .practice-mode-section h3 { font-size: 15px; margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--rule); }
 .practice-mode-grid { display: grid; gap: 8px; flex: 1; grid-auto-rows: 1fr; }
 .practice-mode-grid button { display: flex; align-items: center; gap: 12px; padding: 11px 14px; text-align: left; background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 8px; box-shadow: none; }
-.practice-mode-grid button:hover { border-color: var(--gold); background: var(--muted-surface); transform: none; }
+.practice-mode-grid button:hover { border-color: var(--accent); background: var(--muted-surface); transform: none; }
 .practice-mode-grid button strong { flex: 0 0 auto; min-width: 96px; font-size: 14px; }
 .practice-mode-grid button span { flex: 1; font-size: 12px; color: var(--warm-gray); font-weight: 400; }
-.practice-mode-grid button::after { content: "→"; font-size: 15px; color: var(--gold); opacity: 0; transform: translateX(-4px); transition: opacity .15s, transform .15s; }
+.practice-mode-grid button::after { content: "→"; font-size: 15px; color: var(--accent); opacity: 0; transform: translateX(-4px); transition: opacity .15s, transform .15s; }
 .practice-mode-grid button:hover::after { opacity: 1; transform: none; }
 .practice-filter-controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 0 0 12px; font-size: 13px; }
 .practice-filter-controls label { display: flex; align-items: center; gap: 6px; color: var(--warm-gray); font-size: 12px; white-space: nowrap; }
@@ -85,7 +85,7 @@
 .practice-filter-controls .practice-check { cursor: pointer; }
 .practice-hint { margin: 10px 2px 0; font-size: 12px; line-height: 1.6; }
 @media (max-width: 680px) { .practice-columns { grid-template-columns: 1fr; } .practice-mode-grid button strong { min-width: 84px; } }
-.practice-formula-name { margin: 0 0 14px; color: var(--gold); font-weight: 700; }
+.practice-formula-name { margin: 0 0 14px; color: var(--accent); font-weight: 700; }
 .practice-count-label { display: block; margin-bottom: 6px; color: var(--ink); font-size: 13px; font-weight: 700; }
 #practice-count { width: 100%; margin-bottom: 12px; padding: 10px; border: 1px solid var(--rule); border-radius: 8px; font-size: 16px; background: var(--card); }
 .formula-actions { display: flex; gap: 8px; margin-top: 14px; }
@@ -107,15 +107,15 @@
 .library-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px; color: var(--warm-gray); font-size: 12px; }
 .library-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--rule); }
 .tab-btn { background: transparent; color: var(--warm-gray); padding: 8px 16px; border: none; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; margin: 0; font-size: 14px; min-height: auto; }
-.tab-btn.active { background: var(--muted-surface); color: var(--gold); border-bottom-color: var(--gold); }
+.tab-btn.active { background: var(--muted-surface); color: var(--accent); border-bottom-color: var(--accent); }
 .tab-btn:hover:not(:disabled) { background: var(--muted-surface); transform: none; }
 /* 单列网格：横向卡片需要完整宽度，分组本身提供纵向切分。 */
 .formula-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 /* 分组：可折叠组头 + 组内单列卡片网格。 */
 .formula-group { margin-bottom: 4px; }
 .formula-group-header { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 8px; color: var(--ink); font-size: 14px; min-height: auto; text-align: left; }
-.formula-group-header:hover:not(:disabled) { border-color: var(--gold); transform: none; }
-.formula-group-name { font-weight: 700; color: var(--gold); }
+.formula-group-header:hover:not(:disabled) { border-color: var(--accent); transform: none; }
+.formula-group-name { font-weight: 700; color: var(--accent); }
 .formula-group-stats { flex: 1; color: var(--warm-gray); font-size: 12px; }
 .formula-group-chevron { color: var(--warm-gray); font-size: 12px; transition: transform .15s ease; }
 .formula-group.collapsed .formula-group-chevron { transform: rotate(-90deg); }
@@ -125,27 +125,27 @@
 .today-training-queue { display: flex; align-items: center; justify-content: space-between; gap: 14px 22px; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 18px; border: 1px solid var(--rule); border-radius: 10px; background: var(--muted-surface); }
 .queue-heading { min-width: 220px; }
 .queue-title { display: flex; align-items: center; gap: 4px; margin: 3px 0 5px; color: var(--ink); font-size: 16px; }
-.queue-count { display: inline-block; min-width: 22px; padding: 0 5px; box-sizing: border-box; text-align: center; background: var(--gold); color: #fff; border-radius: 8px; font-size: 13px; }
+.queue-count { display: inline-block; min-width: 22px; padding: 0 5px; box-sizing: border-box; text-align: center; background: var(--accent); color: #fff; border-radius: 8px; font-size: 13px; }
 .queue-heading p { margin: 0; color: var(--warm-gray); font-size: 12px; line-height: 1.5; }
 .queue-items { display: flex; gap: 8px; flex-wrap: wrap; }
 .queue-item { min-height: auto; margin: 0; padding: 9px 16px; border: 1px solid var(--rule); border-radius: 8px; background: var(--card); color: var(--ink); font-size: 13px; font-weight: 700; }
-.queue-item:hover:not(:disabled) { border-color: var(--gold); transform: none; }
+.queue-item:hover:not(:disabled) { border-color: var(--accent); transform: none; }
 .queue-item strong { font-weight: 700; }
 /* content-visibility 让屏外卡片跳过布局与绘制；配合 3D 场景懒挂载，滚动开销大幅下降。 */
 .formula-card { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; display: grid; grid-template-columns: 148px minmax(0, 1fr); gap: 14px; align-items: start; transition: border-color .15s; content-visibility: auto; contain-intrinsic-size: auto 280px; }
 .formula-card-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .formula-card-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.formula-card:hover { border-color: var(--gold); }
+.formula-card:hover { border-color: var(--accent); }
 .formula-card.mastered { border-color: var(--success); }
 .formula-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.formula-id { background: var(--gold); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.formula-id { background: var(--accent); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
 .formula-case { background: var(--muted-surface); border-radius: 4px; padding: 8px; text-align: center; }
 .formula-case pre { font-family: var(--mono); font-size: 13px; color: var(--warm-gray); line-height: 1.4; margin: 0; }
 .formula-moves { background: var(--muted-surface); border-radius: 4px; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
-.formula-moves code { font-family: var(--mono); font-size: 14px; color: var(--gold); flex: 1; word-break: break-all; }
+.formula-moves code { font-family: var(--mono); font-size: 14px; color: var(--accent); flex: 1; word-break: break-all; }
 .move-count { font-size: 11px; color: var(--warm-gray); background: var(--card); border: 1px solid var(--rule); padding: 2px 8px; border-radius: 10px; margin-left: 8px; white-space: nowrap; }
 .formula-section { font-size: 12px; color: var(--ink); margin-bottom: 6px; line-height: 1.6; }
-.formula-section strong { color: var(--gold); display: block; margin-bottom: 2px; }
+.formula-section strong { color: var(--accent); display: block; margin-bottom: 2px; }
 .formula-source { font-size: 10px; color: var(--warm-gray); margin-top: 6px; text-align: right; }
 /* 公式候选是信息选择，不使用主操作的金色强调，保证公式文本易读。 */
 /* 解法卡统一撑满容器宽度，各卡边框左右对齐；展开按钮用 align-self 保持紧凑。 */
@@ -155,12 +155,12 @@
 .formula-variant:hover:not(:disabled) { border-color: #171717; background: #f7f7f7; color: #171717; transform: none; }
 .formula-variant.active { position: relative; z-index: 1; border-color: #171717; background: #fff; box-shadow: none; }
 .formula-variants-toggle { align-self: flex-start; margin-top: 6px; padding: 4px 12px; border: 1px dashed #d4d4d4; border-radius: 6px; background: transparent; color: var(--warm-gray); font-size: 12px; min-height: auto; }
-.formula-variants-toggle:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); transform: none; }
+.formula-variants-toggle:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); transform: none; }
 .formula-variant .variant-name { font-weight: 800; }
 .formula-variant code { color: inherit; font-family: var(--mono); font-size: 14px; font-weight: 700; }
 .formula-variant .variant-meta { color: #525252; font-size: 12px; font-weight: 600; }
 .formula-custom-editor { border-top: 1px solid var(--rule); padding-top: 4px; }
-.formula-custom-editor summary { display: flex; align-items: center; min-height: 44px; color: var(--gold); cursor: pointer; font-size: 12px; font-weight: 600; }
+.formula-custom-editor summary { display: flex; align-items: center; min-height: 44px; color: var(--accent); cursor: pointer; font-size: 12px; font-weight: 600; }
 .formula-custom-editor[open] summary { margin-bottom: 6px; }
 .formula-custom-editor form { display: grid; gap: 8px; }
 .formula-custom-editor label { font-size: 13px; font-weight: 600; }
@@ -172,12 +172,12 @@
 .custom-formula-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .custom-formula-actions button { min-height: 44px; margin: 0; }
 .formula-actions button.mastered-toggle.active { background: var(--success); color: #fff; border-color: var(--success); }
-.recommendation { background: var(--gold-soft); border-left: 3px solid var(--gold); padding: 16px; border-radius: 6px; margin-bottom: 20px; }
+.recommendation { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 16px; border-radius: 6px; margin-bottom: 20px; }
 .rec-reason, .rec-plan { font-size: 14px; color: var(--ink); margin-bottom: 8px; line-height: 1.7; }
-.rec-reason strong, .rec-plan strong { color: var(--gold); }
+.rec-reason strong, .rec-plan strong { color: var(--accent); }
 .formula-algorithm { border: 1px solid var(--rule); border-radius: 8px; background: var(--card); overflow: hidden; }
-.formula-algorithm.primary { border-color: var(--gold-soft-hover); background: var(--gold-soft); }
-.algorithm-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--rule); color: var(--gold); font-size: 12px; font-weight: 700; }
+.formula-algorithm.primary { border-color: var(--accent-soft-hover); background: var(--accent-soft); }
+.algorithm-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--rule); color: var(--accent); font-size: 12px; font-weight: 700; }
 .algorithm-label span { color: var(--warm-gray); font-weight: 500; }
 .algorithm-moves { display: block; padding: 12px 10px; color: var(--ink); font-family: var(--mono); font-size: 15px; font-weight: 700; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
 /* 侧栏 case 图：垂直堆叠（顶视图/3D 场景 + 模式切换 + 说明），顶视图与 3D 均居中。 */
@@ -185,8 +185,8 @@
 .formula-case-modes { display: flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
 .case-mode-btn { padding: 3px 10px; min-height: auto; margin: 0; background: var(--card); color: var(--warm-gray); border: none; border-radius: 0; font-size: 11px; font-weight: 700; }
 .case-mode-btn + .case-mode-btn { border-left: 1px solid var(--rule); }
-.case-mode-btn.active { background: var(--gold); color: #fff; }
-.case-mode-btn:hover:not(:disabled) { transform: none; color: var(--gold); }
+.case-mode-btn.active { background: var(--accent); color: #fff; }
+.case-mode-btn:hover:not(:disabled) { transform: none; color: var(--accent); }
 .case-mode-btn.active:hover:not(:disabled) { color: #fff; }
 .formula-case-diagram-top { display: flex; justify-content: center; min-height: 112px; }
 .formula-cube-scene { width: 112px; height: 112px; display: grid; place-items: center; perspective: 560px; overflow: visible; cursor: grab; touch-action: none; }
@@ -197,15 +197,15 @@
 
 /* ===== 输入框 ===== */
 input[type="password"], input[type="text"], input[type="number"], input[type="search"] { background: var(--card); border: 1px solid var(--rule); color: var(--ink); padding: 8px 12px; border-radius: 6px; font-size: 13px; width: 100%; margin-bottom: 8px; font-family: var(--mono); }
-input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184,134,11,.1); }
+input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(184,134,11,.1); }
 label { font-size: 12px; color: var(--warm-gray); display: block; margin-bottom: 4px; }
 .info { color: var(--warm-gray); font-size: 11px; margin-top: 6px; }
-.eyebrow { color: var(--gold); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 
 /* ===== AI 分析状态流 ===== */
 /* 不再回显原始流式文本；容器只承载脉冲圆点 + 阶段状态文案的等待动画。 */
 .stream-container { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--muted-surface); border: 1px solid var(--rule); border-radius: 8px; }
-.stream-header { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--gold); line-height: 1.5; }
+.stream-header { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--accent); line-height: 1.5; }
 .stream-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse-dot 1s ease-in-out infinite; }
 
 

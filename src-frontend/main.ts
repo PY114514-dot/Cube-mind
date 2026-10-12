@@ -116,11 +116,9 @@ els.btnCalibrateGyro.onclick = () => {
 const timerDisplay = new TimerDisplayController(timer, {
   timerDisplay: els.timerDisplay,
   inspectionStatus: els.inspectionStatus,
-  btnStart: els.btnStart,
 }, {
   isPracticeObservation: () => state.practice.session !== null || state.practice.blockMode !== null,
   getInspectionSettings: () => { const s = settingsController.getSettings(); return { enabled: s.inspectionEnabled, seconds: s.inspectionSeconds }; },
-  onShowTimerStage: () => { /* 训练舞台布局：打乱与计时器始终同屏可见 */ },
   log: (msg, level) => log(msg, level),
 });
 const historyStore = HistoryStore.load((message) => {
@@ -196,7 +194,6 @@ const scrambleController = createScrambleController(
     btnNextScramble: els.btnNextScramble,
     btnToggleScrambleSteps: els.btnToggleScrambleSteps,
     crossStepSelector: els.crossStepSelector,
-    btnStart: els.btnStart,
     btnStop: els.btnStop,
   },
   state,
@@ -304,7 +301,6 @@ diagnosticsController.init();
 // 键盘快捷键：依赖 timer/closeResultModals/historyController，须在其后装配。
 const keyboardShortcutsController = createKeyboardShortcutsController(
   {
-    btnStart: els.btnStart,
     btnStop: els.btnStop,
     libraryModal: els.libraryModal,
     practiceModeModal: els.practiceModeModal,

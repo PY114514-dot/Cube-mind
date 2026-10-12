@@ -115,7 +115,7 @@ export function renderPerformanceChartSvg(durations: number[]): { mean: string; 
     return { x, y, value };
   });
   const line = points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
-  const dots = points.map((point) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" fill="var(--gold)"><title>${point.value.toFixed(2)}s</title></circle>`).join("");
+  const dots = points.map((point) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" fill="var(--accent)"><title>${point.value.toFixed(2)}s</title></circle>`).join("");
   const meanY = 150 - ((mean - min) / range) * 112;
   return {
     mean: `${mean.toFixed(2)}s`,
@@ -123,8 +123,8 @@ export function renderPerformanceChartSvg(durations: number[]): { mean: string; 
     svg: `
       <line x1="36" y1="150" x2="564" y2="150" stroke="var(--rule)" />
       <line x1="36" y1="38" x2="36" y2="150" stroke="var(--rule)" />
-      <line x1="36" y1="${meanY.toFixed(1)}" x2="564" y2="${meanY.toFixed(1)}" stroke="var(--gold-light)" stroke-dasharray="5 5" />
-      <polyline points="${line}" fill="none" stroke="var(--gold)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+      <line x1="36" y1="${meanY.toFixed(1)}" x2="564" y2="${meanY.toFixed(1)}" stroke="var(--accent-hover)" stroke-dasharray="5 5" />
+      <polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
       ${dots}
       <text x="8" y="42" fill="var(--warm-gray)" font-size="11">${max.toFixed(2)}s</text>
       <text x="8" y="152" fill="var(--warm-gray)" font-size="11">${min.toFixed(2)}s</text>

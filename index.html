@@ -10,9 +10,9 @@
   <a class="skip-link" href="#main-content">跳转到主要内容</a>
 
   <header class="app-header">
-    <div>
-      <h1>CubeMind <span class="badge">v0.4</span></h1>
-      <div class="subtitle">记录复原 · 找到弱项 · 专项训练</div>
+    <div class="app-brand">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Z"/><path d="m3 8 9 5 9-5M12 13v8M7.5 5.5l9 5"/></svg></span>
+      <div><h1>CubeMind <span class="badge">v0.4</span></h1><div class="subtitle">CFOP 复盘与专项训练</div></div>
     </div>
     <div class="header-actions">
       <button id="btn-open-agent" title="打开 AI 教练">AI 教练</button>
@@ -71,9 +71,8 @@
         <span class="phase-seg" data-phase="pll">PLL</span>
       </div>
       <p class="timer-hint" id="timer-hint">转动魔方自动开始计时 · 还原后自动停止</p>
-      <div class="timer-manual">
-        <button id="btn-start" class="ghost">手动开始</button>
-        <button id="btn-stop" class="ghost" disabled>停止</button>
+      <div class="timer-actions">
+        <button id="btn-stop" class="ghost" disabled>停止计时</button>
         <button id="btn-reset" class="ghost">重置</button>
       </div>
     </div>
@@ -123,7 +122,7 @@
 
     <div class="stage-cube">
       <div class="cube-panel-heading">
-        <div><span class="cube-panel-label">LIVE CUBE</span><h2>实时魔方</h2></div>
+        <div><span class="cube-panel-label">3 × 3</span><h2>实时魔方</h2></div>
         <button id="btn-open-connection" class="ghost" type="button" aria-controls="connection-menu">连接魔方</button>
       </div>
       <div id="cube-3d"></div>
@@ -342,7 +341,7 @@
         <input id="setting-inspection-seconds" type="number" min="0" max="30" value="15">
         <label for="setting-theme">主界面颜色</label>
         <select id="setting-theme">
-          <option value="paper">羊皮纸金</option>
+          <option value="paper">极简白</option>
           <option value="ocean">深海蓝</option>
           <option value="forest">森林绿</option>
           <option value="violet">紫罗兰</option>
