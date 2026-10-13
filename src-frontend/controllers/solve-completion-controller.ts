@@ -169,7 +169,7 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
       allowUnverifiedMoveScore: deps.ble.allowsUnverifiedMoveScore(),
       externalAnomalies: state.solve.hasPermanentMoveGap ? ["missing-event"] : [],
     });
-    const { validation, trust: solveTrust, stepReview } = completedAnalysis;
+    const { validation, trust: solveTrust } = completedAnalysis;
     showCompletedAnalysis(els, state, deps, completedAnalysis, physicalState);
 
     const previousSolve = state.recentSolves[state.recentSolves.length - 1];
@@ -209,7 +209,7 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
 
     const resultElements = { summary: els.cfopSummary, nextAction: els.resultNextAction, agentOutput: els.agentOutput };
     renderSolveSummary(resultElements, input, previousSolve, state.recentSolves, formulaPractice?.category);
-    renderStepReview(resultElements, stepReview, formulaPractice?.category);
+    renderStepReview(resultElements, input, formulaPractice?.category);
     renderSolveTimeline(els.solveTimeline, input, { focusStage: formulaPractice?.category });
     finishRecordedSolve(state, deps, input, completionPlan);
   }

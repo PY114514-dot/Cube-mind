@@ -3,7 +3,7 @@
 import type { AnalysisInput } from "../agent/types.ts";
 import { buildSolveResultView, buildStepReviewPresentation } from "../core/solve-result-view.ts";
 import { canCompareFormulaPractice } from "../core/practice-effect.ts";
-import type { SolveReview } from "../core/solve-review.ts";
+import { getSolveTargetFace } from "../core/solve-notation.ts";
 import type { FormulaPracticeCategory } from "./solve-timeline.ts";
 
 export interface SolveResultRenderElements {
@@ -64,7 +64,8 @@ function practiceMetric(label: string, value: number, previous: number | undefin
   return { label, value: `${(value / 1000).toFixed(2)}s`, delta };
 }
 
-export function renderStepReview(elements: SolveResultRenderElements, review: SolveReview | undefined, practiceCategory?: FormulaPracticeCategory): void {
+export function renderStepReview(elements: SolveResultRenderElements, solve: AnalysisInput, practiceCategory?: FormulaPracticeCategory): void {
+  const review = solve.stepReview;
   if (!review) {
     elements.agentOutput.innerHTML = '<p class="placeholder">实体已确认复原；动作流不完整，本把仅保留成绩和 BLE 诊断，不生成复盘建议。</p>';
     return;
@@ -72,7 +73,8 @@ export function renderStepReview(elements: SolveResultRenderElements, review: So
   const scopedReview = practiceCategory
     ? { ...review, pauses: review.pauses.filter((pause) => pause.stage === practiceCategory.toLowerCase()) }
     : review;
-  const presentation = buildStepReviewPresentation(scopedReview);
+  const targetFace = getSolveTargetFace(solve.scramble, solve.moves);
+  const presentation = buildStepReviewPresentation(scopedReview, targetFace);
   if (!presentation) {
     elements.agentOutput.innerHTML = '<p class="placeholder">本次没有发现明显长停顿，继续保持节奏。</p>';
     return;
@@ -83,7 +85,7 @@ export function renderStepReview(elements: SolveResultRenderElements, review: So
   elements.agentOutput.innerHTML = `
     <div class="analysis-card">
       <div class="analysis-item bottleneck">
-        <div class="label">逐步复盘：长停顿</div>
+        <div class="label">逐步复盘：长停顿${targetFace === "U" ? " · 白底记谱" : ""}</div>
         <div class="value">平均间隔 ${presentation.averageGap}，最长 ${presentation.maxGap}</div>
       </div>
       <div class="analysis-item advice"><ul>${pauses}</ul></div>

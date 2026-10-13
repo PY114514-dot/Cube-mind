@@ -2,7 +2,7 @@ import { CubeVisualizer } from "./cube-visualizer.ts";
 import type { AnalysisInput } from "../../src-shared/analysis-types.ts";
 import { buildReplayTimestamps } from "../core/solve-replay-timing.ts";
 import { renderSolveTimeline } from "./solve-timeline.ts";
-import { formatMovesForWhiteBottom } from "../core/solve-notation.ts";
+import { formatMovesForWhiteBottom, getSolveTargetFace } from "../core/solve-notation.ts";
 
 const SPEEDS = [0.5, 1, 2, 4] as const;
 
@@ -51,7 +51,8 @@ export class SolveReplayPlayer {
     this.root = root;
     this.scrambleMoves = splitMoves(solve.scramble ?? "");
     this.solutionMoves = (solve.moves ?? []).slice();
-    this.notationMoves = options.view === "white-top" ? this.solutionMoves : formatMovesForWhiteBottom(this.solutionMoves, "U");
+    const view = options.view ?? (getSolveTargetFace(solve.scramble, solve.moves) === "U" ? "yellow-top" : "white-top");
+    this.notationMoves = view === "white-top" ? this.solutionMoves : formatMovesForWhiteBottom(this.solutionMoves, "U");
     this.timestamps = buildReplayTimestamps(this.solutionMoves.length, solve.moveGaps);
     this.recordedMode = this.timestamps !== null;
     this.onPlay = options.onPlay;
@@ -91,7 +92,7 @@ export class SolveReplayPlayer {
     this.visualizer = new CubeVisualizer(cubeRoot, {
       role: "replay",
       emphasizeChanges: options.emphasizeChanges,
-      initialRotationX: getReplayInitialRotationX(options.view),
+      initialRotationX: getReplayInitialRotationX(view),
     });
     this.range = range;
     this.stepLabel = stepLabel;

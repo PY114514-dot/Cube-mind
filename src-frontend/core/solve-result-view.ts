@@ -4,8 +4,8 @@ import type { AnalysisInput } from "../agent/types.ts";
 import { presentSolveQuality } from "./data-quality.ts";
 import { buildSolveResultFeedback } from "./solve-result-feedback.ts";
 import { resolvePersistedSolveTrust } from "./solve-validation.ts";
-import type { SolveReview } from "./solve-review.ts";
 import { formatWcaSolveTime } from "./wca-average.ts";
+import { formatMovesForWhiteBottom } from "./solve-notation.ts";
 
 export interface SolveResultMetric {
   label: string;
@@ -47,14 +47,14 @@ export function buildSolveResultView(current: AnalysisInput, previous: AnalysisI
   };
 }
 
-export function buildStepReviewPresentation(review: SolveReview): StepReviewPresentation | null {
+export function buildStepReviewPresentation(review: NonNullable<AnalysisInput["stepReview"]>, targetFace: "U" | "D" | null): StepReviewPresentation | null {
   if (review.pauses.length === 0) return null;
   return {
     averageGap: formatSeconds(review.averageGap),
     maxGap: formatSeconds(review.maxGap),
     pauses: review.pauses.map((pause) => ({
       index: pause.index + 1,
-      move: pause.move,
+      move: targetFace ? formatMovesForWhiteBottom([pause.move], targetFace)[0] : pause.move,
       stage: pause.stage,
       gap: formatSeconds(pause.gap),
     })),

@@ -42,39 +42,61 @@ const STAGE_COLORS = {
 /** 将结果压缩成用户可读的阶段块，F2L 优先按真实槽位完成顺序拆为 1–4 对。 */
 export function buildTimelineSegments(solve: AnalysisInput): TimelineSegment[] {
   const segments: TimelineSegment[] = [];
-  const targetFace = getSolveTargetFace(solve.scramble, solve.moves);
   addSegment(segments, "Cross", solve.crossDuration, STAGE_COLORS.cross, `${solve.crossMoves} 步`, 0);
-
-  const slots = (solve.f2lSlots ?? [])
-    .filter((slot) => !slot.completedWithCross && slot.completionOrder !== undefined && (slot.duration ?? 0) > 0)
-    .sort((left, right) => (left.completionOrder ?? 0) - (right.completionOrder ?? 0));
-  const slotDuration = slots.reduce((sum, slot) => sum + (slot.duration ?? 0), 0);
-  let slotStart = solve.crossMoves;
-  for (const slot of slots) {
-    const order = slot.completionOrder ?? 0;
-    addSegment(
-      segments,
-      `F2L-${order}`,
-      slot.duration ?? 0,
-      STAGE_COLORS.f2l[Math.min(Math.max(order - 1, 0), STAGE_COLORS.f2l.length - 1)],
-      `${targetFace ? formatF2lSlotForWhiteBottom(slot.slot, targetFace) : slot.slot} 槽 · ${slot.moves ?? 0} 步`,
-      slot.completedAtMove === undefined ? undefined : slotStart,
-    );
-    slotStart = slot.completedAtMove ?? NaN;
-  }
-  // 槽位追踪不可用时仍保留 CFOP 总阶段，不能伪造四对的边界。
-  if (slots.length === 0) {
-    addSegment(segments, "F2L", solve.f2lDuration, STAGE_COLORS.f2l[0], `${solve.f2lMoves} 步`, solve.crossMoves);
-  } else if (solve.f2lDuration > slotDuration) {
-    addSegment(segments, "F2L-未识别", solve.f2lDuration - slotDuration, STAGE_COLORS.f2l[3], "未能归属到槽位的动作");
-  }
-
+  segments.push(...buildF2lSegments(solve));
   addSegment(segments, "OLL", solve.ollDuration, STAGE_COLORS.oll, `${solve.ollMoves} 步`, solve.crossMoves + solve.f2lMoves);
   addSegment(segments, "PLL", solve.pllDuration, STAGE_COLORS.pll, `${solve.pllMoves} 步`, solve.crossMoves + solve.f2lMoves + solve.ollMoves);
 
   const accounted = segments.reduce((sum, segment) => sum + segment.duration, 0);
   if (solve.totalDuration > accounted) {
     addSegment(segments, "未识别", solve.totalDuration - accounted, STAGE_COLORS.incomplete, "未完成或未能识别的尾段");
+  }
+  return segments;
+}
+
+function buildF2lSegments(solve: AnalysisInput): TimelineSegment[] {
+  const segments: TimelineSegment[] = [];
+  const targetFace = getSolveTargetFace(solve.scramble, solve.moves);
+  const slots = (solve.f2lSlots ?? [])
+    .filter((slot) => !slot.completedWithCross && slot.completionOrder !== undefined && (slot.duration ?? 0) > 0)
+    .sort((left, right) => (left.completionOrder ?? 0) - (right.completionOrder ?? 0));
+  const groups: (typeof slots)[] = [];
+  for (const slot of slots) {
+    const previous = groups[groups.length - 1];
+    // 同一转动完成多对时共享整个区间，不能将这段时间逐槽位相加。
+    if (previous && slot.completedAtMove !== undefined && previous[0].completedAtMove === slot.completedAtMove) previous.push(slot);
+    else groups.push([slot]);
+  }
+  const timestamps = buildReplayTimestamps(solve.moves?.length ?? 0, solve.moveGaps);
+  const f2lEnd = solve.crossMoves + solve.f2lMoves;
+  let slotStart = solve.crossMoves;
+  let slotDuration = 0;
+  for (const group of groups) {
+    const end = group[0].completedAtMove;
+    if (end !== undefined && (!Number.isInteger(end) || end <= slotStart || end > f2lEnd)) continue;
+    // 槽位追踪和 CFOP 的 Cross 边界可能不同；时间轴必须使用同一阶段起点。
+    const elapsed = timestamps && end !== undefined && Number.isInteger(slotStart)
+      ? timestamps[end] - timestamps[slotStart] : Math.max(...group.map((slot) => slot.duration ?? 0));
+    const duration = Math.min(Math.max(0, elapsed), Math.max(0, solve.f2lDuration - slotDuration));
+    const moves = end !== undefined && Number.isInteger(slotStart) ? end - slotStart : group[0].moves ?? 0;
+    const names = group.map((slot) => targetFace ? formatF2lSlotForWhiteBottom(slot.slot, targetFace) : slot.slot).join(" / ");
+    const order = group[0].completionOrder ?? 0;
+    addSegment(
+      segments,
+      `F2L-${group.map((slot) => slot.completionOrder).join("+")}`,
+      duration,
+      STAGE_COLORS.f2l[Math.min(Math.max(order - 1, 0), STAGE_COLORS.f2l.length - 1)],
+      `${names} 槽 · ${moves} 步${group.length > 1 ? " · 同步完成" : ""}`,
+      end === undefined ? undefined : slotStart,
+    );
+    slotStart = end ?? NaN;
+    slotDuration += duration;
+  }
+  // 槽位追踪不可用时仍保留 CFOP 总阶段，不能伪造四对的边界。
+  if (segments.length === 0) {
+    addSegment(segments, "F2L", solve.f2lDuration, STAGE_COLORS.f2l[0], `${solve.f2lMoves} 步`, solve.crossMoves);
+  } else if (solve.f2lDuration > slotDuration) {
+    addSegment(segments, "F2L-未识别", solve.f2lDuration - slotDuration, STAGE_COLORS.f2l[3], "未能归属到槽位的动作");
   }
   return segments;
 }
