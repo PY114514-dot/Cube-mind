@@ -5,7 +5,7 @@
  * 签名口径与 P0-1 的 F2L 签名一致——只取固定坐标系下目标块的状态，再对
  * U 层 4 种朝向（无 U / U / U2 / U'）做归一化，保证实战中带任意 AUF 的
  * 局面都能命中。识别本身不做 F2L 完成度校验，调用方（cfop-parser）负责
- * 只对白十字 F2L 已严格完成的局面调用，避免误报。
+ * 只对底层归一到 D 面且 F2L 已严格完成的局面调用，避免误报。
  */
 
 import { OLL_FORMULAS } from "../formula/oll-formulas.ts";
@@ -25,7 +25,7 @@ export interface LastLayerCaseMatch {
 const OLL_SIGNATURE_TABLE = createOllSignatureTable();
 const PLL_SIGNATURE_TABLE = createPllSignatureTable();
 
-/** 白十字 F2L（含十字）是否严格完成：D 层角块、D 层棱块与 E 层棱块全部就位。 */
+/** D 底层 F2L（含十字）是否严格完成：D 层角块、D 层棱块与 E 层棱块全部就位。 */
 export function isF2lComplete(cube: CubieCube): boolean {
   for (let position = 4; position < 8; position++) {
     if (cube.ca[position] !== position) return false;
@@ -106,7 +106,7 @@ function createOllSignatureTable(): Map<number, Formula> {
   const table = new Map<number, Formula>();
   for (const formula of OLL_FORMULAS) {
     const setup = formulaSetupState(formula);
-    // 公式 setup 必须保证白十字 F2L 完整，否则跳过（数据有问题时宁缺毋滥）。
+    // 公式 setup 必须保证 D 底层 F2L 完整，否则跳过（数据有问题时宁缺毋滥）。
     if (!setup || !isF2lComplete(setup)) continue;
     const signature = canonicalSignature(setup, encodeOllSignature);
     // 同一 case 的备选公式（同签名）保留编号最小的公式。

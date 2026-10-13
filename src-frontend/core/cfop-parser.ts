@@ -2,7 +2,7 @@
 
 import { CubieCube, parseMove, SOLVED_FACELET } from "../utils/mathlib.ts";
 import { getCfopPhase, type CfopPhase } from "./cstimer-cfop.ts";
-import { formatMovesForWhiteBottom } from "./solve-notation.ts";
+import { formatMovesForWhiteBottom, normalizeCubeForD } from "./solve-notation.ts";
 import {
   isCubeSolved,
   isF2lComplete,
@@ -33,9 +33,11 @@ export interface CfopResult {
   ollCaseId?: string;
   /** PLL 阶段起点（首个 F2L 与顶层朝向均完成且未还原的局面）命中的公式编号；未命中保持 undefined。 */
   pllCaseId?: string;
-  /** OLL case 首次出现的局面索引（第几步之后）；供 case 事件组装对齐停顿与步数。 */
+  /** 严格 F2L 完成时确认的底层，供 CASE 识别与事件终点使用同一坐标。 */
+  caseTargetFace?: "U" | "D";
+  /** OLL case 首次出现的局面索引（第几步之后，-1 表示首步前）；供事件组装对齐停顿与步数。 */
   ollCaseStartIndex?: number;
-  /** PLL case 首次出现的局面索引（第几步之后）；供 case 事件组装对齐停顿与步数。 */
+  /** PLL case 首次出现的局面索引（第几步之后，-1 表示首步前）；供事件组装对齐停顿与步数。 */
   pllCaseStartIndex?: number;
 }
 
@@ -77,6 +79,7 @@ export function parseCfop(
   const moveIndices = moveStrs.map(parseMove);
   let cube = CubieCube.SOLVED;
   for (const move of scrambleMoves) cube = cube.applyMove(parseMove(move));
+  const initialState = cube;
   let progress = getCfopProgress(getCfopPhase(cube.toFaceCube()));
 
   const states: CubieCube[] = [];
@@ -128,35 +131,41 @@ export function parseCfop(
   if (isSolved) {
     segments.push({ stage: "solved", moves: [], moveIndices: [], startIdx: moveCount, endIdx: moveCount, duration: 0, timestamps: [] });
   }
-  const { ollCaseId, ollCaseStartIndex, pllCaseId, pllCaseStartIndex } = matchCaseIds(states);
-  return { segments, totalMoves: moveCount, isSolved, ollCaseId, pllCaseId, ollCaseStartIndex, pllCaseStartIndex };
+  return { segments, totalMoves: moveCount, isSolved, ...matchCaseIds(initialState, states) };
 }
 
 /**
- * 实战 case 编号接线：与 CSTimer 形状掩码的分段边界无关，直接扫描每步后的局面。
- * cstimer 掩码在轴旋转下会提前判定 F2L 完成，因此这里用严格的白十字 F2L 校验；
+ * 实战 case 编号接线：包含首步前的局面，不依赖 CSTimer 形状掩码的分段边界。
+ * 掩码在轴旋转下会提前判定 F2L 完成，因此用严格的 U/D 底层 F2L 校验；
  * 未命中的局面保持 undefined，保证绝不误报。起始索引只在真正命中编号时记录。
  */
-function matchCaseIds(states: CubieCube[]): {
+function matchCaseIds(initialState: CubieCube, states: CubieCube[]): {
+  caseTargetFace?: "U" | "D";
   ollCaseId?: string;
   ollCaseStartIndex?: number;
   pllCaseId?: string;
   pllCaseStartIndex?: number;
 } {
+  let caseTargetFace: "U" | "D" | undefined;
   let ollCaseId: string | undefined;
   let ollCaseStartIndex: number | undefined;
   let pllCaseId: string | undefined;
   let pllCaseStartIndex: number | undefined;
-  for (let index = 0; index < states.length; index++) {
-    const state = states[index];
-    if (ollCaseId === undefined && isF2lComplete(state) && !isOllComplete(state)) {
+  for (let index = -1; index < states.length; index++) {
+    const original = index === -1 ? initialState : states[index];
+    const targetFace = caseTargetFace ?? (isF2lComplete(original) ? "D" : "U");
+    const state = normalizeCubeForD(original, targetFace);
+    if (!isF2lComplete(state) || isCubeSolved(state)) continue;
+    // 只看十字会把四条顶棱已朝向的 OLL/PLL 误当另一底层；严格 F2L 才能确认。
+    caseTargetFace = targetFace;
+    if (ollCaseId === undefined && !isOllComplete(state)) {
       const match = recognizeOllCaseFromCube(state);
       if (match) {
         ollCaseId = match.formulaId;
         ollCaseStartIndex = index;
       }
     }
-    if (pllCaseId === undefined && isF2lComplete(state) && isOllComplete(state) && !isCubeSolved(state)) {
+    if (pllCaseId === undefined && isOllComplete(state)) {
       const match = recognizePllCaseFromCube(state);
       if (match) {
         pllCaseId = match.formulaId;
@@ -165,7 +174,7 @@ function matchCaseIds(states: CubieCube[]): {
     }
     if (ollCaseId !== undefined && pllCaseId !== undefined) break;
   }
-  return { ollCaseId, ollCaseStartIndex, pllCaseId, pllCaseStartIndex };
+  return { caseTargetFace, ollCaseId, ollCaseStartIndex, pllCaseId, pllCaseStartIndex };
 }
 
 export function formatCfop(result: CfopResult, targetFace: "U" | "D"): string {

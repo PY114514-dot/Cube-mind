@@ -129,7 +129,7 @@ export function analyzeF2lSlots(
     });
     const latestOrder = Math.max(...slots.map((slot) => slot.completionOrder ?? 0), completionOrder);
     if (latestOrder > completionOrder) {
-      for (const slot of slots.filter((item) => item.completionOrder === latestOrder)) {
+      for (const slot of slots.filter((item) => (item.completionOrder ?? 0) > completionOrder)) {
         const definition = definitions.find((item) => item.slot === slot.slot);
         if (!definition) continue;
         const classification = classifyF2lCaseFamily(pairStartCube, definition, definitions, targetFace ?? "D");

@@ -6,6 +6,7 @@ import { getFormulaSetupMoves } from "../formula/setup-validation.ts";
 import type { Formula } from "../formula/types.ts";
 import { CubieCube, parseMove } from "../utils/mathlib.ts";
 import { isCrossSolved } from "./cross-solver.ts";
+import { formatF2lSlotForWhiteBottom, normalizeCubeForD } from "./solve-notation.ts";
 
 export interface F2lCaseMatch {
   formulaId: string;
@@ -98,10 +99,9 @@ export function recognizeF2lCaseFromCube(
   slot: F2lCaseTargetSlot,
   targetFace: "U" | "D",
 ): F2lCaseMatch | null {
-  // 签名表只覆盖白十字（D 面）模板；黄十字实战暂退回家族分类。
-  if (targetFace !== "D") return null;
-  const definition = findSlotDefinition(slot);
-  const normalized = rotateCubeY(cube, SLOT_Y_ROTATIONS[slot]);
+  const normalizedSlot = formatF2lSlotForWhiteBottom(slot, targetFace);
+  const definition = findSlotDefinition(normalizedSlot);
+  const normalized = rotateCubeY(normalizeCubeForD(cube, targetFace), SLOT_Y_ROTATIONS[normalizedSlot]);
   const attempts = [
     normalized,
     normalized.applyMove(parseMove("U")),

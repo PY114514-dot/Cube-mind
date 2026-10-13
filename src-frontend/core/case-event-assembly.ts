@@ -8,7 +8,8 @@
 import type { CaseEvent } from "../../src-shared/analysis-types.ts";
 import type { CfopResult } from "./cfop-parser.ts";
 import type { F2lSlotAnalysis } from "./f2l-slot-tracker.ts";
-import { isCubeSolved, isOllComplete } from "./last-layer-recognizer.ts";
+import { isCubeSolved, isF2lComplete, isOllComplete } from "./last-layer-recognizer.ts";
+import { normalizeCubeForD } from "./solve-notation.ts";
 import { CubieCube, parseMove } from "../utils/mathlib.ts";
 
 export interface CaseEventAssemblyInput {
@@ -48,9 +49,13 @@ export function assembleCaseEvents(input: CaseEventAssemblyInput): CaseEvent[] {
   }
 
   const states = rebuildStates(input.scrambleMoves, input.solveMoves);
-  if (input.cfop.ollCaseId !== undefined && input.cfop.ollCaseStartIndex !== undefined) {
+  const targetFace = input.cfop.caseTargetFace;
+  if (input.cfop.ollCaseId !== undefined && input.cfop.ollCaseStartIndex !== undefined && targetFace !== undefined) {
     const startMoveIndex = input.cfop.ollCaseStartIndex + 1;
-    const execMoves = countMovesUntil(states, input.cfop.ollCaseStartIndex, isOllComplete);
+    const execMoves = countMovesUntil(states, input.cfop.ollCaseStartIndex, (state) => {
+      const normalized = normalizeCubeForD(state, targetFace);
+      return isF2lComplete(normalized) && isOllComplete(normalized);
+    });
     events.push(buildEvent({
       stage: "OLL",
       caseId: input.cfop.ollCaseId,
