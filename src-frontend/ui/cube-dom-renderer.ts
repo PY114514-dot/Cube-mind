@@ -10,7 +10,6 @@ import {
   setCubiePosition,
 } from "./cube-geometry.ts";
 import {
-  FACE_ORDER,
   getManualPitchAfterDrag,
   getManualViewRotation,
   getManualYawAfterDrag,
@@ -183,7 +182,6 @@ export class CubeDomRenderer {
     cube.className = "cube3d";
     this.cube = cube;
     this.renderRotation();
-    this.renderCore(cube);
 
     for (let y = -1; y <= 1; y++) {
       for (let x = -1; x <= 1; x++) {
@@ -193,18 +191,6 @@ export class CubeDomRenderer {
 
     scene.appendChild(cube);
     this.root.appendChild(scene);
-  }
-
-  /** 内核承接转层露出的空间，避免缝隙呈现空壳。 */
-  private renderCore(cube: HTMLElement): void {
-    const core = document.createElement("div");
-    core.className = "cube-inner-core";
-    for (const face of FACE_ORDER) {
-      const faceElement = document.createElement("div");
-      faceElement.className = `cube-inner-core-face cube-inner-core-face-${face.toLowerCase()}`;
-      core.appendChild(faceElement);
-    }
-    cube.appendChild(core);
   }
 
   private bindPointerControls(): void {

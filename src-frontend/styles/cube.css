@@ -21,15 +21,6 @@
 .cube-scene::after { content: ""; position: absolute; width: 174px; height: 26px; left: 39px; bottom: 18px; border-radius: 50%; background: radial-gradient(ellipse, rgba(9,13,20,.30) 0%, rgba(9,13,20,.12) 48%, transparent 74%); filter: blur(8px); transform: rotateX(68deg); pointer-events: none; }
 .cube3d { width: 164px; height: 164px; position: relative; transform-style: preserve-3d; transition: transform .16s ease-out; will-change: transform; }
 .cube3d.is-gyro-following { transition: none; }
-/* 内核只负责承接真实转层时可见的内部空间；外部结构完全由 cubie foundation 构成。 */
-.cube-inner-core { position: absolute; left: 50%; top: 50%; width: 138px; height: 138px; margin: -69px 0 0 -69px; transform-style: preserve-3d; pointer-events: none; }
-.cube-inner-core-face { position: absolute; inset: 0; border-radius: 20px; background: linear-gradient(145deg, #3d424a, #26292f 44%, #181b20 82%); box-shadow: inset 3px 3px 4px rgba(255,255,255,.06), inset -5px -5px 6px rgba(0,0,0,.55); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.cube-inner-core-face-u { transform: rotateX(90deg) translateZ(60px); }
-.cube-inner-core-face-r { transform: rotateY(90deg) translateZ(60px); }
-.cube-inner-core-face-f { transform: translateZ(60px); }
-.cube-inner-core-face-d { transform: rotateX(-90deg) translateZ(60px); }
-.cube-inner-core-face-l { transform: rotateY(-90deg) translateZ(60px); }
-.cube-inner-core-face-b { transform: rotateY(180deg) translateZ(60px); }
 .cube-cubie, .cube-turn-layer { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; transform-style: preserve-3d; }
 .cube-turn-layer { inset: 0; width: auto; height: auto; left: 0; top: 0; margin: 0; will-change: transform; }
 /* 先放置完整黑色 cubie foundation，再叠圆角面板。它是连续的实体底座，不会在圆角交界露出白色舞台。 */
