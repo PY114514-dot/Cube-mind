@@ -15,6 +15,9 @@ export interface SolveResultFeedback {
 
 /** 返回本把成绩的统一反馈；history 应是不包含 current 的同类历史。 */
 export function buildSolveResultFeedback(current: AnalysisInput, history: AnalysisInput[]): SolveResultFeedback {
+  if (current.practiceKind === "review") {
+    return { label: "原题复习", detail: "单独保存，不计入常规 PB、AO 或 AI 实战基准。", isPersonalBest: false };
+  }
   if (!resolvePersistedSolveTrust(current).scoreEligible) {
     return { label: "本把不计入成绩", detail: "设备数据未通过校验，不参与 PB 和 AO 统计。", isPersonalBest: false };
   }

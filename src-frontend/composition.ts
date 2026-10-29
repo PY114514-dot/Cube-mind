@@ -6,7 +6,9 @@
  * 解法完成流水线四个功能块在此做依赖注入，避免 main 膨胀超过 400 行。
  */
 
-import { els } from "./dom-elements.ts";
+import { els, escapeHtml } from "./dom-elements.ts";
+import { buildF2lSolutions } from "./core/f2l-solution-coach.ts";
+import { F2lSolutionPanel } from "./ui/f2l-solution-panel.ts";
 import { createCrossSolverController } from "./controllers/cross-solver-controller.ts";
 import { createAnalysisRenderer } from "./ui/analysis-renderer.ts";
 import { createTrainingController } from "./controllers/training-controller.ts";
@@ -38,6 +40,8 @@ import type { TimerDisplayController } from "./controllers/timer-display-control
 import type { CubeVisualizer } from "./ui/cube-visualizer.ts";
 import type { HistoryStore } from "./core/history-store.ts";
 import type { Timer } from "./core/timer.ts";
+import type { SolveReviewTarget } from "../src-shared/analysis-types.ts";
+import type { createSolveReviewController } from "./controllers/solve-review-controller.ts";
 
 type LogFn = (msg: string, type?: "info" | "move" | "error") => void;
 type EscapeHtml = (s: string) => string;
@@ -79,6 +83,7 @@ export interface AnalysisFlowDeps {
   escapeHtml: EscapeHtml;
   log: LogFn;
   onPrepareScramble: () => void;
+  onReview: (target: SolveReviewTarget) => void;
 }
 
 function addTrainingEvidence(input: AnalysisInput, records: PracticeRecord[], solves: AnalysisInput[]): void {
@@ -105,19 +110,24 @@ function recordAnalysisSession(result: AnalysisResult, input: AnalysisInput): vo
   });
 }
 
+function addF2lEvidence(input: AnalysisInput, library: FormulaLibraryController): void {
+  const algorithms = library.getF2lAlgorithms();
+  for (const solve of input.analysisSolves ?? []) solve.f2lSolutions = buildF2lSolutions(solve, algorithms);
+  input.f2lSolutions = input.analysisSolves?.[input.analysisSolves.length - 1]?.f2lSolutions;
+}
+
 /** AI 分析渲染、训练闭环与练习控制器；返回 practiceController 供后续装配。 */
 export function setupAnalysisFlow(deps: AnalysisFlowDeps): {
   practiceController: ReturnType<typeof createPracticeController>;
   refreshTraining: () => void;
 } {
   const { state, formulaLibrary, showAgentTab, closeResultModals, escapeHtml, log, onPrepareScramble } = deps;
-
   const analysisRenderer = createAnalysisRenderer({ agentOutput: els.agentOutput }, {
     log,
     escapeHtml,
     formulaLibrary,
+    onReview: deps.onReview,
   });
-
   const practiceController = createPracticeController(
     {
       practiceBanner: els.practiceBanner,
@@ -143,7 +153,6 @@ export function setupAnalysisFlow(deps: AnalysisFlowDeps): {
       },
     },
   );
-
   const trainingController = createTrainingController({
     elements: { trainingPlanContainer: els.trainingPlanContainer, trainingDashboard: els.trainingDashboard },
     formulaLibrary,
@@ -152,7 +161,6 @@ export function setupAnalysisFlow(deps: AnalysisFlowDeps): {
     getPracticeRecords: () => practiceController.getPracticeRecords(),
     getSolves: () => state.recentSolves,
   });
-
   bindAnalysisController({
     elements: {
       btnOpenAgent: els.btnOpenAgent,
@@ -170,7 +178,10 @@ export function setupAnalysisFlow(deps: AnalysisFlowDeps): {
       analysisRenderer.renderAgentResult(enriched, input);
     },
     log,
-    onBeforeAnalyze: (input) => addTrainingEvidence(input, practiceController.getPracticeRecords(), state.recentSolves),
+    onBeforeAnalyze: (input) => {
+      addF2lEvidence(input, formulaLibrary);
+      addTrainingEvidence(input, practiceController.getPracticeRecords(), state.recentSolves);
+    },
     onAfterAnalyze: (result, input) => {
       recordAnalysisSession(result, input);
       // 记录本次公式指派，作为下次分析回流效果的时间基准
@@ -226,6 +237,7 @@ export function setupCubeEditor(deps: CubeEditorDeps): void {
 }
 
 export interface SolvePipelineDeps {
+  reviewController: ReturnType<typeof createSolveReviewController>;
   refreshTraining: () => void;
   state: AppState;
   timer: Timer;
@@ -266,6 +278,7 @@ function setupTimerRuntime(deps: SolvePipelineDeps, onSolveComplete: (signal: Ab
       phaseIndicator: {
         reset: () => phaseIndicatorController.reset(),
       },
+      onReviewReset: () => deps.reviewController.retry(),
       log,
     },
   );
@@ -284,7 +297,7 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
     state, timer, timerDisplay, cubeVisualizer, historyStore, bleController,
     historyController, practiceController, scrambleController, closeResultModals, log,
   } = deps;
-
+  const f2lPanel = new F2lSolutionPanel(els.f2lSolutions, escapeHtml);
   const solveCompletionController = createSolveCompletionController(
     els,
     state,
@@ -292,6 +305,11 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
       timer,
       historyStore,
       getCaseReference: (caseId) => deps.formulaLibrary.getCaseReference(caseId),
+      onReviewComplete: (input) => deps.reviewController.complete(input),
+      onRecordReady: (input) => {
+        input.f2lSolutions = buildF2lSolutions(input, deps.formulaLibrary.getF2lAlgorithms());
+        f2lPanel.render(input);
+      },
       ble: {
         requestCurrentFacelets: () => bleController.requestCurrentFacelets(),
         allowsUnverifiedMoveScore: () => bleController.allowsUnverifiedMoveScore(),
@@ -309,9 +327,7 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
       log,
     },
   );
-
   const { timerController, phaseIndicatorController } = setupTimerRuntime(deps, (signal) => solveCompletionController.onSolveComplete(signal));
-
   const moveController = createMoveController(state, {
     timer,
     cubeVisualizer,
@@ -333,7 +349,6 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
     closeResultModals: () => closeResultModals(),
     log,
   });
-
   const connectSyncController = createConnectSyncController(
     { btnStop: els.btnStop },
     state,
@@ -350,6 +365,5 @@ export function setupSolvePipeline(deps: SolvePipelineDeps): {
       log,
     },
   );
-
   return { timerController, moveController, connectSyncController, phaseIndicatorController };
 }

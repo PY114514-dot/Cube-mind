@@ -14,59 +14,11 @@ export function formatSolveTimeLocal(solve: AnalysisInput): string {
   return formatWcaSolveTime({ duration: solve.totalDuration, penalty: solve.penalty });
 }
 
-export function getReviewInsight(solve: AnalysisInput): { bottleneck: string; reason: string; advice: string } {
-  const stages: Array<[string, number]> = [
-    ["Cross", solve.crossDuration], ["F2L", solve.f2lDuration],
-    ["OLL", solve.ollDuration], ["PLL", solve.pllDuration],
-  ];
-  const [bottleneck, duration] = stages.reduce((slowest, current) => current[1] > slowest[1] ? current : slowest);
-  const longestPause = solve.stepReview?.pauses.reduce(
-    (longest, pause) => pause.gap > longest.gap ? pause : longest,
-    { gap: 0, move: "", stage: "" },
-  );
-  const slotInsight = getF2lSlotInsight(solve);
-  if (slotInsight) return slotInsight;
-  if (longestPause && longestPause.gap >= 1000) {
-    return {
-      bottleneck,
-      reason: `${longestPause.stage || bottleneck} 在 ${longestPause.move || "动作间"} 停顿 ${(longestPause.gap / 1000).toFixed(2)}s`,
-      advice: `先练习 ${longestPause.stage || bottleneck} 的连续识别，目标是把停顿压到 1 秒以内。`,
-    };
-  }
-  return {
-    bottleneck,
-    reason: `${bottleneck} 用时 ${(duration / 1000).toFixed(2)}s，占本次成绩主要比例`,
-    advice: `建立 ${bottleneck} 专项训练，优先减少观察和启动前停顿。`,
-  };
-}
-
-function getF2lSlotInsight(solve: AnalysisInput): { bottleneck: string; reason: string; advice: string } | null {
-  const completedSlots = (solve.f2lSlots ?? []).filter((slot) => !slot.completedWithCross && slot.duration !== undefined);
-  if (completedSlots.length === 0) return null;
-  const target = completedSlots.reduce((worst, slot) => {
-    const worstScore = (worst.duration ?? 0) + worst.maxGap * 1.5 + worst.repairCount * 1000 + worst.breakCount * 1000;
-    const score = (slot.duration ?? 0) + slot.maxGap * 1.5 + slot.repairCount * 1000 + slot.breakCount * 1000;
-    return score > worstScore ? slot : worst;
-  });
-  const slotDuration = ((target.duration ?? 0) / 1000).toFixed(2);
-  const pauseText = target.maxGap >= 800 ? `，最长停顿 ${(target.maxGap / 1000).toFixed(2)}s` : "";
-  const recoveryText = target.repairCount > 0 || target.breakCount > 0
-    ? `，修复 ${target.repairCount} 次、回退 ${target.breakCount} 次`
-    : "";
-  return {
-    bottleneck: `F2L · ${target.slot}`,
-    reason: `第 ${target.completionOrder ?? "—"} 对 ${target.slot} 用时 ${slotDuration}s、${target.moves ?? 0} 步${pauseText}${recoveryText}`,
-    advice: target.maxGap >= 800
-      ? `专项练 ${target.slot} 槽位的连续观察：本对插入前先锁定下一对，优先把这次 ${(target.maxGap / 1000).toFixed(2)}s 停顿压低。`
-      : `专项练 ${target.slot} 槽位：保持本对 ${target.moves ?? 0} 步的执行节奏，减少重做和回退。`,
-  };
-}
-
 /** 设备成绩统计：按 deviceId/名称分组，输出平均、最佳与最近日期。 */
 export function renderDeviceHistoryHtml(solves: AnalysisInput[]): string {
   const groups = new Map<string, AnalysisInput[]>();
   for (const solve of solves) {
-    if (!resolvePersistedSolveTrust(solve).scoreEligible) continue;
+    if (solve.practiceKind === "review" || !resolvePersistedSolveTrust(solve).scoreEligible) continue;
     const key = solve.deviceId?.trim() || solve.deviceName?.trim() || "未标识魔方";
     const records = groups.get(key) ?? [];
     records.push(solve);

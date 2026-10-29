@@ -1,6 +1,7 @@
 import type { AnalysisInput, AnalysisResult } from "../../src-shared/analysis-types.ts";
 import { getAnalysisSolves, getStageMetrics, resolveCoachingReplay } from "../../src-shared/analysis-coaching.ts";
 import { formatCaseTransferFeedback } from "./case-transfer-feedback.ts";
+import { canReviewSolve } from "../core/solve-review-session.ts";
 
 type EscapeHtml = (text: string) => string;
 
@@ -34,6 +35,7 @@ function renderIssues(result: AnalysisResult, input: AnalysisInput, escapeHtml: 
       <small class="issue-evidence">${escapeHtml(issue.evidence)}</small>
       ${replay ? `<button type="button" class="ghost issue-replay-btn" data-issue-replay-index="${index}">查看第 ${replay.solveIndex + 1} 把 · ${replay.startMoveIndex + 1}–${replay.endMoveIndex} 步</button>`
         : '<small class="issue-replay-note">统计证据或缺少准确动作位置，暂无片段回放</small>'}
+      ${replay && canReviewSolve(replay.solve) ? `<button type="button" class="ghost" data-issue-review-index="${index}">重练原题</button>` : ""}
     </li>`;
   }).join("");
 }
@@ -72,6 +74,7 @@ export function renderAnalysisCard(result: AnalysisResult, input: AnalysisInput,
   return `<div class="analysis-card coaching-card">
     <div class="coaching-source"><span class="source-tag">${result.source === "ai" ? "DeepSeek 分析" : "本地规则分析"}</span><span>结论引用本次实录证据</span></div>
     ${renderInsight(input)}
+    <div data-analysis-f2l></div>
     ${result.nextFocus ? `<div class="coaching-focus"><span class="focus-label">下一把聚焦</span>${escapeHtml(result.nextFocus)}</div>` : ""}
     ${result.trend ? `<div class="coaching-trend"><span class="trend-label">趋势</span>${escapeHtml(result.trend)}</div>` : ""}
     ${issues ? `<div class="analysis-item"><div class="label">问题与证据</div><ul class="coaching-issues">${issues}</ul></div>`

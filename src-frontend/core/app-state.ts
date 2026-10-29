@@ -3,6 +3,7 @@ import type { AnalysisInput } from "../agent/types.ts";
 import type { Formula } from "../formula/types.ts";
 import type { InspectionPenalty } from "./inspection-rules.ts";
 import { createScrambleProgress, type ScrambleProgress } from "./scramble-tracker.ts";
+import type { SolveReviewSession } from "./solve-review-session.ts";
 
 // ====== 公式练习子类型 ======
 
@@ -70,6 +71,7 @@ export interface AppState {
   scramble: ScrambleState;
   solve: SolveState;
   practice: PracticeState;
+  review: SolveReviewSession | null;
   diagnostics: DiagnosticsState;
   recentSolves: AnalysisInput[];
 }
@@ -115,6 +117,7 @@ export function createInitialState(recentSolves: AnalysisInput[]): AppState {
     diagnostics: {
       isBleRecording: false,
     },
+    review: null,
     recentSolves,
   };
 }

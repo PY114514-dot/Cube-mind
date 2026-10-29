@@ -3,6 +3,7 @@ import type { TrainingProfileEntry } from "../src-shared/training-plan-types.ts"
 import { MAX_ANALYSIS_SOLVES, toAnalysisSolve } from "../src-shared/analysis-coaching.ts";
 import { parseAnalysisBaseline, parseCaseTransfer } from "./coaching-validation.ts";
 import { isRecord, isNonNegativeNumber, isMoveCount, isInteger } from "./validation-values.ts";
+import { parseF2lSolutions } from "./f2l-solution-validation.ts";
 
 const MAX_TOTAL_RECENT_PAUSES = 40;
 const MAX_SCRAMBLE_LENGTH = 500;
@@ -242,6 +243,8 @@ export function parseAnalysisInput(value: unknown): AnalysisInput | null {
   if (value.caseTransfer !== undefined && !caseTransfer) return null;
   const scramble = optionalString(value.scramble, MAX_SCRAMBLE_LENGTH);
   const moves = parseMoves(value.moves);
+  const f2lSolutions = parseF2lSolutions(value.f2lSolutions, moves);
+  if (value.f2lSolutions !== undefined && !f2lSolutions) return null;
   const moveGaps = parseMoveGaps(value.moveGaps, moves);
   const f2lSlots = parseF2lSlots(value.f2lSlots);
   const sessionContext = parseSessionContext(value.sessionContext);
@@ -278,6 +281,7 @@ export function parseAnalysisInput(value: unknown): AnalysisInput | null {
     moves,
     moveGaps,
     f2lSlots,
+    f2lSolutions,
     sessionContext,
     practiceSummary,
     moveCount,

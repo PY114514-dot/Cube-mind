@@ -28,6 +28,9 @@ import { createScrambleController } from "./controllers/scramble-controller.ts";
 import { createPracticeEntryController } from "./controllers/practice-entry-controller.ts";
 import { createDiagnosticsController } from "./controllers/diagnostics-controller.ts";
 import { createKeyboardShortcutsController } from "./controllers/keyboard-shortcuts-controller.ts";
+import { createSolveReviewController } from "./controllers/solve-review-controller.ts";
+import { createReviewTarget } from "./core/solve-review-session.ts";
+import { buildF2lSolutions } from "./core/f2l-solution-coach.ts";
 import { closeResultModals, els, escapeHtml, log } from "./dom-elements.ts";
 import { setupAnalysisFlow, setupCrossSolver, setupCubeEditor, setupSolvePipeline } from "./composition.ts";
 
@@ -75,9 +78,6 @@ const historyController = new HistoryController({
   btnExportHistoryJson: els.btnExportHistoryJson,
   btnExportHistoryCsv: els.btnExportHistoryCsv,
   scoreDisplayMode: els.scoreDisplayMode,
-  reviewThreshold: els.reviewThreshold,
-  btnRefreshReview: els.btnRefreshReview,
-  reviewList: els.reviewList,
   performanceChart: els.performanceChart,
   performanceMean: els.performanceMean,
   performanceStd: els.performanceStd,
@@ -90,14 +90,17 @@ const historyController = new HistoryController({
 }, {
   log: (msg, level) => log(msg, level),
   getRecords: () => state.recentSolves,
-  onRetry: (scramble) => {
-    scrambleController.retryHistoryScramble(scramble);
+  getF2lSolutions: (solve) => buildF2lSolutions(solve, formulaLibrary.getF2lAlgorithms()),
+  onRetry: (solve) => {
+    const target = createReviewTarget(solve);
+    if (target) reviewController.start([target]);
   },
   onDelete: (index) => {
     if (!historyStore.remove(index)) return;
     state.recentSolves = historyStore.all;
     historyController.render();
     refreshTraining();
+    reviewController.render();
     log("已删除历史记录");
   },
   onSave: () => historyStore.save(),
@@ -117,7 +120,7 @@ const timerDisplay = new TimerDisplayController(timer, {
   timerDisplay: els.timerDisplay,
   inspectionStatus: els.inspectionStatus,
 }, {
-  isPracticeObservation: () => state.practice.session !== null || state.practice.blockMode !== null,
+  isPracticeObservation: () => state.practice.session !== null || state.practice.blockMode !== null || state.review !== null,
   getInspectionSettings: () => { const s = settingsController.getSettings(); return { enabled: s.inspectionEnabled, seconds: s.inspectionSeconds }; },
   log: (msg, level) => log(msg, level),
 });
@@ -146,6 +149,7 @@ const { practiceController, refreshTraining } = setupAnalysisFlow({
   escapeHtml,
   log,
   onPrepareScramble: () => scrambleController.preparePracticeScramble(),
+  onReview: (target) => reviewController.start([target]),
 });
 
 // ====== 局面编辑器（composition） ======
@@ -175,6 +179,7 @@ const bleController = new BleConnectionController(
     onDisconnect: (brand) => {
       scrambleController.cancelPhysicalVerification();
       timerController.abortOnDisconnect(brand);
+      reviewController.cancel();
     },
     onConnected: (brand) => {
       void connectSyncController.confirmCubeResetAfterConnect(brand);
@@ -208,11 +213,28 @@ const scrambleController = createScrambleController(
       updateBanner: () => practiceController.updateBanner(),
     },
     onNewScramble: () => phaseIndicatorController.reset(),
+    onReviewNext: () => reviewController.next(),
+    onLeaveReview: () => reviewController.cancel(),
     escapeHtml,
     log: (msg, type) => log(msg, type),
   },
 );
 scrambleController.init();
+
+const reviewController = createSolveReviewController(els, state, {
+  isRunning: () => timer.getState().isRunning,
+  loadScramble: (scramble) => scrambleController.retryHistoryScramble(scramble),
+  newScramble: () => scrambleController.newScramble(),
+  updatePracticeBanner: () => practiceController.updateBanner(),
+  closeOverlays: () => {
+    closeResultModals();
+    historyController.closeModal();
+    els.libraryModal.classList.remove("open");
+    els.practiceModal.classList.remove("open");
+    els.practiceModeModal.classList.remove("open");
+  },
+  escapeHtml, log,
+});
 
 // 练习入口：依赖 practiceController/formulaLibrary/scrambleController，须在其后装配。
 const practiceEntryController = createPracticeEntryController(
@@ -258,7 +280,8 @@ practiceEntryController.init();
 
 // 解法完成流水线 / 计时会话 / Move 编排 / 连接复位（composition，须整体装配）。
 const { timerController, moveController, connectSyncController, phaseIndicatorController } = setupSolvePipeline({
-  refreshTraining,
+  refreshTraining: () => { refreshTraining(); reviewController.render(); },
+  reviewController,
   state,
   timer,
   timerDisplay,
@@ -320,6 +343,7 @@ keyboardShortcutsController.init();
 settingsController.init();
 formulaLibrary.init();
 historyController.init();
+reviewController.render();
 refreshTraining();
 void scrambleController.newScramble();
 if (state.recentSolves.length > 0) log(` 已加载 ${state.recentSolves.length} 把历史`);

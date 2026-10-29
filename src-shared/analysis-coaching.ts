@@ -13,7 +13,7 @@ const STAGES = [
 
 export interface CoachingEvidence extends AnalysisIssue {
   id: string;
-  kind: "case" | "pause" | "slot" | "stage";
+  kind: "case" | "pause" | "slot" | "stage" | "f2l-solution";
   caseId?: string;
   replay?: { solveIndex: number; startMoveIndex: number; endMoveIndex: number };
 }
@@ -36,7 +36,7 @@ export function toAnalysisSolve(solve: AnalysisInput): AnalysisSolve {
     moveCount: solve.moveCount ?? solve.moves?.length,
     tps: solve.totalDuration > 0 && (solve.moveCount !== undefined || solve.moves !== undefined)
       ? (solve.moveCount ?? solve.moves?.length ?? 0) / (solve.totalDuration / 1000) : undefined,
-    f2lSlots: solve.f2lSlots, caseEvents: solve.caseEvents, stepReview: solve.stepReview,
+    f2lSlots: solve.f2lSlots, caseEvents: solve.caseEvents, stepReview: solve.stepReview, f2lSolutions: solve.f2lSolutions,
   };
 }
 
@@ -224,12 +224,24 @@ function slotEvidence(input: AnalysisInput): CoachingEvidence[] {
 }
 
 /** 前后端与模型共享同一证据目录，引用 ID 决定可信数据和回放目标。 */
+function f2lSolutionEvidence(input: AnalysisInput): CoachingEvidence[] {
+  return getAnalysisSolves(input).flatMap((solve, solveIndex) => (solve.f2lSolutions ?? []).flatMap((pair, pairIndex): CoachingEvidence[] => {
+    if (!pair.candidate || pair.actualStepCount <= pair.candidate.moves.length) return [];
+    const saved = pair.actualStepCount - pair.candidate.moves.length;
+    return [{ id: `f2l-solution:${solveIndex}:${pairIndex}`, kind: "f2l-solution", stage: "F2L",
+      severity: saved >= 4 ? "high" : "medium", description: `第 ${solveIndex + 1} 把 F2L 有已验证的局部少步方案`,
+      evidence: `原始设备槽位 ${pair.slots.join("/")}，原动作第 ${pair.startMoveIndex + 1}–${pair.endMoveIndex} 条；相邻同面合并后实录 ${pair.actualStepCount} 步，候选 ${pair.candidate.moves.length} 步，少 ${saved} 步。候选原始设备记谱 ${pair.candidate.moves.join(" ")}；${pair.note} 仅是当前公式库候选内最短，不代表全局最优、更快或可直接拼接后续解法。`,
+      replay: replayFor(solve, solveIndex, pair.startMoveIndex, pair.endMoveIndex),
+    }];
+  }));
+}
+
 export function buildCoachingEvidence(input: AnalysisInput): CoachingEvidence[] {
   const cases = caseEvidence(input);
   const pauses = pauseEvidence(input).filter((pause) => !cases.some((item) =>
     item.replay && pause.replay && item.replay.solveIndex === pause.replay.solveIndex
     && item.replay.startMoveIndex === pause.replay.startMoveIndex));
-  return [...cases, ...pauses, ...slotEvidence(input), ...stageEvidence(input)]
+  return [...f2lSolutionEvidence(input), ...cases, ...pauses, ...slotEvidence(input), ...stageEvidence(input)]
     .sort((a, b) => Number(b.severity === "high") - Number(a.severity === "high")
       || Number(a.severity === "low") - Number(b.severity === "low"));
 }

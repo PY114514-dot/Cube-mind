@@ -43,6 +43,8 @@ export interface ScrambleControllerDependencies {
   };
   /** 新一把打乱装载完成（含专项/公式/历史重试）时回调，用于复位派生 UI 状态。 */
   onNewScramble?: () => void;
+  onReviewNext?: () => void;
+  onLeaveReview?: () => void;
   escapeHtml: (s: string) => string;
   log: (msg: string, type?: "info" | "move" | "error") => void;
 }
@@ -59,7 +61,7 @@ export interface ScrambleController {
   cancelPhysicalVerification(): void;
   /** 生成指定 Cross 打乱时检测到实体转动：放弃本次生成，等待用户复原后重试。 */
   cancelGeneration(): void;
-  /** 历史记录重试：载入历史打乱并允许直接开始计时。 */
+  /** 按当前已追踪局面生成到原题的过渡打乱。 */
   retryHistoryScramble(scramble: string): void;
 }
 
@@ -185,6 +187,10 @@ async function newScramble(context: ScrambleContext): Promise<void> {
   const { state } = context;
   const { log } = context.deps;
   context.physical.cancel();
+  if (state.review) {
+    context.deps.onReviewNext?.();
+    return;
+  }
   if (state.practice.session) {
     preparePracticeScramble(context);
     return;
@@ -215,6 +221,8 @@ async function newScramble(context: ScrambleContext): Promise<void> {
 }
 
 function prepareBlockScramble(context: ScrambleContext, mode: "cross" | "f2l" | "cross-f2l"): void {
+  context.deps.onLeaveReview?.();
+  cancelGeneration(context);
   const { els, state } = context;
   const { timer, timerDisplay, onNewScramble, log } = context.deps;
   context.physical.cancel();
@@ -241,6 +249,8 @@ function prepareBlockScramble(context: ScrambleContext, mode: "cross" | "f2l" | 
 }
 
 function preparePracticeScramble(context: ScrambleContext): void {
+  context.deps.onLeaveReview?.();
+  cancelGeneration(context);
   const { els, state } = context;
   const { timer, timerDisplay, practice, onNewScramble } = context.deps;
   context.physical.cancel();
@@ -338,26 +348,10 @@ function cancelGeneration(context: ScrambleContext): void {
 }
 
 function retryHistoryScramble(context: ScrambleContext, scramble: string): void {
-  const { els, state } = context;
-  const { timer, timerDisplay, cubeVisualizer, onNewScramble, log } = context.deps;
   context.physical.cancel();
-  state.scramble.currentScramble = scramble;
-  state.scramble.startingMoves = [];
-  state.scramble.progress = createScrambleProgress(state.scramble.currentScramble);
-  state.scramble.performedMoves = [];
-  state.scramble.stateVerified = false;
-  state.scramble.wrongMoveCount = 0;
-  state.practice.awaitingNextScramble = false;
-  state.practice.postSolveMoves = [];
-  timer.reset();
-  timerDisplay.stopDisplay();
-  timerDisplay.updateDisplay();
-  els.btnStop.disabled = true;
-  cubeVisualizer.reset();
-  renderProgress(context);
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  log("重试历史打乱");
-  onNewScramble?.();
+  cancelGeneration(context);
+  loadGeneratedScramble(context, scramble);
+  context.deps.log("已从当前局面生成原题过渡打乱，无需断开魔方");
 }
 
 function init(context: ScrambleContext): void {

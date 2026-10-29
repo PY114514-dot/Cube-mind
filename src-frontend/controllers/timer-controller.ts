@@ -37,6 +37,7 @@ export interface TimerControllerDependencies {
     reset: () => void;
   };
   log: (msg: string, type?: "info" | "move" | "error") => void;
+  onReviewReset?: () => void;
 }
 
 export interface TimerController {
@@ -165,6 +166,7 @@ export function createTimerController(
 
   function resetSession(): void {
     cancelFinalization();
+    if (state.review) { deps.onReviewReset?.(); return; }
     resetTimerSession(els, state, deps);
   }
 

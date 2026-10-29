@@ -115,7 +115,7 @@ function formatTime(value: number | null): string {
 
 function getPracticeRecords(state: AppState): PracticeRecord[] {
   return state.recentSolves.flatMap((solve) => {
-    if (!solve.practiceKind || !solve.practiceOutcome) return [];
+    if (!solve.practiceKind || solve.practiceKind === "review" || !solve.practiceOutcome) return [];
     return [{
       practiceKind: solve.practiceKind,
       formulaId: solve.practiceFormulaId,

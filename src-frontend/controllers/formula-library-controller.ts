@@ -4,7 +4,7 @@
  * 练习会话的实际启动通过 onStartPractice 回调委托给外部。
  */
 
-import { recommendFormulas, getFormulaById } from "../formula/formula-library.ts";
+import { recommendFormulas, getFormulaById, listByCategory } from "../formula/formula-library.ts";
 import type { Formula, FormulaCategory } from "../formula/types.ts";
 import type { CaseAlgorithmReference } from "../../src-shared/analysis-types.ts";
 import { getFormulaSetupMoves, isFormulaDevicePracticeSafe } from "../formula/setup-validation.ts";
@@ -21,7 +21,6 @@ const FORMULA_MASTERED_KEY = "cubemind:formula-mastered";
 export class FormulaLibraryController {
   private els: FormulaLibraryElements;
   private cb: FormulaLibraryCallbacks;
-
   private libraryState: LibraryState = { category: "F2L", search: "", hideMastered: false };
   private masteredFormulaIds = new Set<string>();
   private selectedFormulaVariants = new Map<string, number>();
@@ -186,6 +185,10 @@ export class FormulaLibraryController {
     return { name: variant.name, moves: [...variant.moves] };
   }
 
+  getF2lAlgorithms(): CaseAlgorithmReference[] {
+    return listByCategory("F2L").flatMap((formula) => this.renderer.getFormulaVariants(formula)
+      .map((variant) => ({ name: `${formula.id} · ${variant.name}`, moves: [...variant.moves] })));
+  }
   private updateCustomF2l(form: HTMLFormElement, remove: boolean): void {
     const id = form.dataset.customF2lForm ?? "";
     const formula = getFormulaById(id);
@@ -245,7 +248,6 @@ export class FormulaLibraryController {
   }
 
   // ====== 事件绑定 ======
-
   private bindLibraryControls(): void {
     this.els.libraryContent.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -291,7 +293,6 @@ export class FormulaLibraryController {
       this.renderer.showLibrary(this.libraryState.category);
     });
   }
-
   private bindFormulaActions(): void {
     this.staticCubePreviews.mount();
 
@@ -334,7 +335,6 @@ export class FormulaLibraryController {
   }
 
   // ====== 掌握状态持久化 ======
-
   private toggleFormulaMastered(id: string): void {
     if (this.masteredFormulaIds.has(id)) {
       this.masteredFormulaIds.delete(id);
@@ -343,11 +343,9 @@ export class FormulaLibraryController {
     }
     this.saveMasteredFormulas();
   }
-
   private saveMasteredFormulas(): void {
     localStorage.setItem(FORMULA_MASTERED_KEY, JSON.stringify([...this.masteredFormulaIds]));
   }
-
   private loadMasteredFormulas(): void {
     const saved = localStorage.getItem(FORMULA_MASTERED_KEY);
     if (!saved) return;
@@ -367,7 +365,6 @@ export class FormulaLibraryController {
   }
 
   // ====== SpeedCubeDB 备用解 ======
-
   private async loadSpeedCubeDbVariants(): Promise<void> {
     if (this.hasLoadedSpeedCubeDb || this.isLoadingSpeedCubeDb) return;
     this.isLoadingSpeedCubeDb = true;
@@ -388,7 +385,6 @@ export class FormulaLibraryController {
       this.isLoadingSpeedCubeDb = false;
     }
   }
-
   private isSpeedCubeDbResponse(value: unknown): value is SpeedCubeDbAlternativesResponse {
     if (!value || typeof value !== "object" || !("alternatives" in value)) return false;
     const alternatives = (value as Record<string, unknown>).alternatives;

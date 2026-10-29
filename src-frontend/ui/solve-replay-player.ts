@@ -3,6 +3,7 @@ import type { AnalysisInput } from "../../src-shared/analysis-types.ts";
 import { buildReplayTimestamps } from "../core/solve-replay-timing.ts";
 import { renderSolveTimeline } from "./solve-timeline.ts";
 import { formatMovesForWhiteBottom, getSolveTargetFace } from "../core/solve-notation.ts";
+import { invertMove } from "../core/scramble-tracker.ts";
 
 const SPEEDS = [0.5, 1, 2, 4] as const;
 
@@ -11,6 +12,7 @@ export interface SolveReplayPlayerOptions {
   emptyMessage?: string;
   emphasizeChanges?: boolean;
   view?: "white-top" | "yellow-top";
+  initialRotationY?: number;
   onPlay?: () => void;
   /** 零基半开区间；回放从起点之前的完整局面开始，到区间终点自动停止。 */
   segment?: { startMoveIndex: number; endMoveIndex: number };
@@ -93,6 +95,7 @@ export class SolveReplayPlayer {
       role: "replay",
       emphasizeChanges: options.emphasizeChanges,
       initialRotationX: getReplayInitialRotationX(view),
+      initialRotationY: options.initialRotationY,
     });
     this.range = range;
     this.stepLabel = stepLabel;
@@ -125,8 +128,8 @@ export class SolveReplayPlayer {
   }
 
   private bindControls(): void {
-    this.root.querySelector<HTMLButtonElement>("[data-replay-action=back]")?.addEventListener("click", () => this.seek(this.index - 1));
-    this.root.querySelector<HTMLButtonElement>("[data-replay-action=forward]")?.addEventListener("click", () => this.seek(this.index + 1));
+    this.root.querySelector<HTMLButtonElement>("[data-replay-action=back]")?.addEventListener("click", () => this.step(-1));
+    this.root.querySelector<HTMLButtonElement>("[data-replay-action=forward]")?.addEventListener("click", () => this.step(1));
     this.playButton.addEventListener("click", () => this.isPlaying ? this.pause() : this.play());
     this.speedButton.addEventListener("click", () => {
       this.advanceClock();
@@ -142,6 +145,17 @@ export class SolveReplayPlayer {
       if (playing) this.play();
     });
     this.range.addEventListener("input", () => this.seek(Number(this.range.value)));
+  }
+
+  private step(direction: -1 | 1): void {
+    this.pause();
+    const target = Math.max(this.startIndex, Math.min(this.endIndex, this.index + direction));
+    if (target === this.index) return;
+    const move = direction === 1 ? this.solutionMoves[this.index] : invertMove(this.solutionMoves[target]);
+    this.visualizer.applyMove(move);
+    this.index = target;
+    this.elapsed = this.moveTime(target);
+    this.renderProgress();
   }
 
   private play(): void {

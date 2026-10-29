@@ -15,86 +15,58 @@
 .device-history-title { font-size: 12px; color: var(--warm-gray); font-weight: 700; margin-bottom: 6px; }
 .device-history { font-size: 13px; color: var(--warm-gray); }
 
-/* ===== 复盘面板 ===== */
-.review-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 13px; }
-.review-controls input { width: 64px; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--card); }
-.review-hint { font-size: 12px; color: var(--warm-gray); margin-bottom: 12px; }
-.review-list { display: grid; gap: 10px; }
-/* 浅色复盘卡片：左边成绩块（序号/用时/TPS），右边瓶颈洞察，替换原实心按钮观感 */
-.review-entry {
-  width: 100%;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 44px 104px minmax(0, 1fr);
-  grid-template-areas:
-    "rank time insight"
-    "rank tps insight";
-  align-items: center;
-  column-gap: 14px;
-  row-gap: 3px;
-  padding: 12px 14px;
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--ink);
-  text-align: left;
-  box-shadow: none;
+/* ===== 原题复习 ===== */
+.review-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.review-hint { font-size: 13px; color: var(--warm-gray); margin-bottom: 12px; line-height: 1.6; }
+.review-list { display: grid; gap: 8px; }
+.review-entry { display: grid; grid-template-columns: 28px 90px minmax(0, 1fr) auto; grid-template-areas: "rank time insight action" "rank steps insight action"; align-items: center; gap: 4px 14px; padding: 16px 0; border-bottom: 1px solid var(--rule); }
+.review-rank { grid-area: rank; font: 12px var(--mono); color: var(--warm-gray); }
+.review-time { grid-area: time; font: 22px var(--mono); color: var(--ink); }
+.review-time i { font: normal 12px var(--sans); margin-left: 3px; color: var(--warm-gray); }
+.review-tps { grid-area: steps; font-size: 12px; color: var(--warm-gray); }
+.review-insight { grid-area: insight; display: grid; gap: 5px; min-width: 0; font-size: 13px; line-height: 1.5; }
+.review-insight small { color: var(--warm-gray); }
+.review-entry button { grid-area: action; margin: 0; min-height: 44px; }
+.review-home, .review-banner { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 16px 20px; border-radius: 10px; background: var(--accent-soft); }
+.review-home { margin-top: 10px; }
+.review-banner { margin-bottom: 20px; }
+.review-home[hidden], .review-banner[hidden] { display: none; }
+.review-home-copy, .review-banner > div { display: grid; gap: 5px; font-size: 14px; }
+.review-home span, .review-banner small { color: var(--warm-gray); font-size: 12px; font-weight: 400; line-height: 1.5; }
+.review-home button, .review-banner button { flex-shrink: 0; min-height: 44px; margin: 0; }
+.review-comparison { margin: 14px 0; font-size: 14px; }
+.review-comparison > span { display: block; color: var(--warm-gray); font-size: 12px; }
+.review-comparison > strong { display: block; margin: 6px 0; font: 24px var(--mono); color: var(--accent); }
+.review-comparison small { color: var(--warm-gray); font-size: 12px; }
+.review-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.review-actions button { min-height: 44px; margin: 0; }
+@media (max-width: 600px) {
+  .review-entry { grid-template-columns: 76px minmax(0, 1fr); grid-template-areas: "time insight" "steps insight" "action action"; }
+  .review-rank { display: none; }
+  .review-entry button { justify-self: end; }
+  .review-home, .review-banner { flex-wrap: wrap; padding: 16px; }
+  .review-actions button { flex: 1; }
 }
-.review-entry:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--muted-surface);
-  transform: none;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.review-rank {
-  grid-area: rank;
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--rule);
-  border-radius: 50%;
-  background: var(--muted-surface);
-  color: var(--warm-gray);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-}
-.review-entry-top .review-rank { border-color: var(--accent); background: var(--accent); color: #fff; }
-.review-time {
-  grid-area: time;
-  color: var(--ink);
-  font-family: var(--mono);
-  font-size: 22px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-  white-space: nowrap;
-}
-.review-time i { font-style: normal; margin-left: 1px; color: var(--warm-gray); font-size: 12px; font-weight: 600; }
-.review-tps {
-  grid-area: tps;
-  justify-self: start;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--muted-surface);
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 700;
-}
-.review-insight { grid-area: insight; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
-.review-bottleneck {
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.4;
-}
-.review-reason { font-size: 12px; line-height: 1.5; color: var(--ink); }
-.review-advice { font-size: 12px; line-height: 1.5; color: var(--warm-gray); }
+
+/* ===== 逐对解法对比 ===== */
+.f2l-coach { margin: 22px 0; padding-top: 18px; border-top: 1px solid var(--rule); }
+.f2l-coach-heading, .f2l-pair-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; }
+.f2l-coach-heading h3 { margin: 0; font-size: 17px; }
+.f2l-coach-heading span, .f2l-coach-note, .f2l-pair small { color: var(--warm-gray); font-size: 12px; line-height: 1.7; }
+.f2l-coach-note { margin: 10px 0; }
+.f2l-pair-list { display: grid; gap: 12px; }
+.f2l-pair { min-width: 0; padding: 16px; border: 1px solid var(--rule); border-radius: 12px; background: var(--card); }
+.f2l-pair-heading { margin-bottom: 12px; font-size: 14px; }
+.f2l-pair-heading > span { color: var(--accent); font-size: 12px; }
+.f2l-alg-row { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 12px; margin: 9px 0; align-items: baseline; }
+.f2l-alg-row span { font-size: 12px; color: var(--warm-gray); }
+.f2l-alg-row code { font: 14px/1.8 var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+.f2l-pair small { display: block; }
+.f2l-pair button { margin: 12px 0 0; min-height: 44px; }
+.f2l-replay-tabs { display: flex; gap: 6px; margin-top: 18px; }
+.f2l-replay-tabs button { flex: 1; min-height: 44px; background: var(--muted-surface); border-color: transparent; color: var(--warm-gray); }
+.f2l-replay-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+@media (max-width: 600px) { .f2l-alg-row { grid-template-columns: 1fr; gap: 2px; } }
 
 /* ===== 趋势面板 ===== */
 .performance-stats { display: flex; gap: 16px; margin-bottom: 10px; font-size: 12px; color: var(--warm-gray); }

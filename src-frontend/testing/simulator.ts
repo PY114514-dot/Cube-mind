@@ -122,13 +122,42 @@ async function selfCheck(status: HTMLElement): Promise<void> {
   assert(ganCube.connected, "请先连接模拟魔方，并确认已还原");
   assert(ganCube.getSolution().length === 0, "请先逆序还原模拟魔方再运行自检");
   assert(element("#practice-banner").hidden, "请先终止正在进行的专项练习");
-  status.textContent = "自检 1/3：重置取消旧回读…";
+  status.textContent = "自检 1/4：重置取消旧回读…";
   await checkCancellation();
-  status.textContent = "自检 2/3：常规复原与可信成绩…";
+  status.textContent = "自检 2/4：常规复原与可信成绩…";
   await checkNormalSolve();
-  status.textContent = "自检 3/3：失败重试与连续两次 F2L 专项…";
+  status.textContent = "自检 3/4：失败重试与连续两次 F2L 专项…";
   await checkPractice();
-  status.textContent = "自检通过 · 成绩、换轮与 F2L 训练正常";
+  status.textContent = "自检 4/4：原题重练、额外转动与成绩隔离…";
+  await checkReview();
+  status.textContent = "自检通过 · 原题复习、成绩隔离与 F2L 训练正常";
+}
+
+async function checkReview(): Promise<void> {
+  const count = element("#stat-count").textContent;
+  element<HTMLButtonElement>("#btn-close-cfop").click();
+  element<HTMLButtonElement>("#history-last-five [data-history-index]").click();
+  element<HTMLButtonElement>("#btn-retry-history").click();
+  assert(!element("#review-banner").hidden, "历史未进入原题复习");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await sendMoves(remainingMoves());
+    await waitFor(() => !element("#inspection-status").hidden);
+    const before = records().length;
+    await sendMoves(ganCube.getSolution());
+    await waitFor(() => records().length > before);
+    const current = records()[records().length - 1];
+    assert(current.practiceKind === "review" && Boolean(current.review), "重练没有保存原题关联");
+    assert(element("#stat-count").textContent === count, "重练污染了常规成绩次数");
+    assert(element("#result-next-action").textContent?.includes("原题复习") ?? false, "缺少复习结果");
+    if (attempt === 0) {
+      await sendMoves(["R"]);
+      element<HTMLButtonElement>("[data-review-again]").click();
+      assert(remainingMoves()[0] === "R'", "重练过渡遗漏了成绩后的实体转动");
+    }
+  }
+  assert(element("#review-summary").textContent?.includes("完成 1/1 题 · 重练 2 次") ?? false, "同题重复被计为多题");
+  element<HTMLButtonElement>("[data-review-next]").click();
+  assert(element("#review-banner").hidden, "完成整组后复习未退出");
 }
 
 function init(): void {

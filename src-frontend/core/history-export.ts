@@ -3,6 +3,7 @@ import type { AnalysisInput } from "../agent/types.ts";
 const CSV_COLUMNS = [
   "completedAt", "totalDurationMs", "crossDurationMs", "f2lDurationMs", "ollDurationMs", "pllDurationMs",
   "crossMoves", "f2lMoves", "ollMoves", "pllMoves", "tps", "penalty", "trustState", "physicalState", "qualityStatus", "scramble", "moves",
+  "practiceKind", "reviewOriginalCompletedAt", "reviewGoal",
 ] as const;
 
 function escapeCsv(value: string | number | undefined): string {
@@ -35,6 +36,9 @@ export function formatHistoryCsv(records: AnalysisInput[]): string {
     record.qualityStatus,
     record.scramble,
     record.moves?.join(" "),
+    record.practiceKind,
+    record.review?.completedAt,
+    record.review?.goal.kind,
   ].map(escapeCsv).join(","));
   return `\uFEFF${CSV_COLUMNS.join(",")}\n${rows.join("\n")}`;
 }

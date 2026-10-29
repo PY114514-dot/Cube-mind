@@ -15,7 +15,9 @@ export interface AnalysisInput {
   deviceId?: string;
   groupId?: string;
   practiceMode?: "cross" | "f2l" | "cross-f2l";
-  practiceKind?: "formula" | "cross" | "f2l" | "cross-f2l";
+  practiceKind?: "formula" | "cross" | "f2l" | "cross-f2l" | "review";
+  /** 原题与复习目标快照，原成绩删除后仍可按相同口径比较。 */
+  review?: SolveReviewTarget;
   practiceFormulaId?: string;
   /** 专项训练时所选解法快照；不同解法不能直接比较执行速度。 */
   practiceReferenceAlgorithm?: CaseAlgorithmReference;
@@ -75,6 +77,8 @@ export interface AnalysisInput {
   };
   /** 逐 case 证据：实际动作、起手停顿及保存成绩时所选解法的参照。 */
   caseEvents?: CaseEvent[];
+  /** 从实录起点验证过的 F2L 局部候选；不是整把最优解。 */
+  f2lSolutions?: F2lSolutionReview[];
   /** 会话级上下文：最近几把的瓶颈摘要，用于趋势判断 */
   sessionContext?: Array<{
     completedAt: number;
@@ -109,12 +113,44 @@ export interface AnalysisIssue {
   evidenceId?: string;
 }
 
+export type SolveReviewGoal = {
+  kind: "duration" | "moves";
+  baseline: number;
+  reason: string;
+} | {
+  kind: "case-pause";
+  baseline: number;
+  reason: string;
+  caseId: string;
+  stage: CaseEvent["stage"];
+  referenceAlgorithm?: CaseAlgorithmReference;
+};
+
+export interface SolveReviewTarget {
+  scramble: string;
+  completedAt?: number;
+  totalDuration: number;
+  moveCount: number;
+  goal: SolveReviewGoal;
+}
+
+export interface F2lSolutionReview {
+  slots: ("FR" | "FL" | "BL" | "BR")[];
+  targetFace: "U" | "D";
+  startMoveIndex: number;
+  endMoveIndex: number;
+  actualStepCount: number;
+  preservedSlots: ("FR" | "FL" | "BL" | "BR")[];
+  candidate?: CaseAlgorithmReference;
+  note: string;
+}
+
 export type AnalysisStage = "Cross" | "F2L" | "OLL" | "PLL";
 
 export interface AnalysisSolve extends Pick<AnalysisInput,
   "totalDuration" | "crossDuration" | "f2lDuration" | "ollDuration" | "pllDuration"
   | "crossMoves" | "f2lMoves" | "ollMoves" | "pllMoves" | "scramble" | "moves"
-  | "moveCount" | "tps" | "f2lSlots" | "stepReview" | "caseEvents" | "moveGaps"> {}
+  | "moveCount" | "tps" | "f2lSlots" | "stepReview" | "caseEvents" | "moveGaps" | "f2lSolutions"> {}
 
 export interface StageBaseline {
   stage: AnalysisStage;

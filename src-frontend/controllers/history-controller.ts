@@ -1,16 +1,17 @@
 /**
  * 历史成绩面板控制器
- * 管理 AO 统计、最近记录、设备统计、趋势图、复盘候选、分组和导出。
+ * 管理 AO 统计、最近记录、设备统计、趋势图、分组和导出。
  * 视图构建（复盘洞察/设备统计/趋势图 SVG）抽到 history-view-helpers.ts。
  */
 
 import type { AnalysisInput } from "../agent/types.ts";
+import type { F2lSolutionReview } from "../../src-shared/analysis-types.ts";
 import { formatWcaAverage, getWcaScore } from "../core/wca-average.ts";
 import { resolvePersistedSolveTrust } from "../core/solve-validation.ts";
 import { formatHistoryCsv, formatHistoryJson } from "../core/history-export.ts";
 import { HistoryDetailController } from "../ui/history-detail-controller.ts";
 import {
-  escapeHtml, formatSolveTimeLocal, getReviewInsight, isPracticeSolve,
+  escapeHtml, formatSolveTimeLocal, isPracticeSolve,
   renderDeviceHistoryHtml, renderPerformanceChartSvg,
 } from "./history-view-helpers.ts";
 
@@ -26,6 +27,7 @@ const SYSTEM_HISTORY_GROUPS = [
   { id: "normal", name: "普通计时" },
   { id: "all", name: "全部记录（含练习）" },
   { id: "practice", name: "全部练习" },
+  { id: "practice-review", name: "原题复习" },
   { id: "practice-formula", name: "公式练习" },
   { id: "practice-cross", name: "Cross 练习" },
   { id: "practice-f2l", name: "F2L 练习" },
@@ -36,7 +38,6 @@ export const SYSTEM_HISTORY_GROUP_IDS = new Set<string>(SYSTEM_HISTORY_GROUPS.ma
 
 const HISTORY_GROUPS_KEY = "cubemind:history-groups";
 const SCORE_DISPLAY_MODE_KEY = "cubemind:score-display-mode";
-const REVIEW_THRESHOLD_KEY = "cubemind:review-threshold";
 
 export interface HistoryControllerElements {
   historyToday: HTMLElement;
@@ -56,9 +57,6 @@ export interface HistoryControllerElements {
   btnExportHistoryJson: HTMLButtonElement;
   btnExportHistoryCsv: HTMLButtonElement;
   scoreDisplayMode: HTMLSelectElement;
-  reviewThreshold: HTMLInputElement;
-  btnRefreshReview: HTMLButtonElement;
-  reviewList: HTMLDivElement;
   performanceChart: SVGSVGElement;
   performanceMean: HTMLElement;
   performanceStd: HTMLElement;
@@ -73,7 +71,8 @@ export interface HistoryControllerElements {
 export interface HistoryControllerCallbacks {
   log: (msg: string, level?: "info" | "move" | "error") => void;
   getRecords: () => AnalysisInput[];
-  onRetry: (scramble: string) => void;
+  onRetry: (solve: AnalysisInput) => void;
+  getF2lSolutions: (solve: AnalysisInput) => F2lSolutionReview[];
   onDelete: (index: number) => void;
   /** 分组删除修改了记录内容后通知外层持久化 */
   onSave: () => void;
@@ -94,16 +93,12 @@ export class HistoryController {
     this.detailController = new HistoryDetailController(
       { detail: els.historyDetail, retryButton: els.btnRetryHistory, solutionButton: els.btnViewHistorySolution },
       () => this.isDetailedMode(),
+      cb.getF2lSolutions,
     );
   }
 
   init(): void {
     this.els.scoreDisplayMode.value = localStorage.getItem(SCORE_DISPLAY_MODE_KEY) === "detailed" ? "detailed" : "simple";
-    const savedThreshold = Number(localStorage.getItem(REVIEW_THRESHOLD_KEY));
-    if (Number.isFinite(savedThreshold) && savedThreshold >= 0) {
-      this.els.reviewThreshold.value = String(savedThreshold);
-    }
-
     this.els.historyGroup.onchange = () => {
       this.selectedHistoryGroup = this.els.historyGroup.value;
       this.render();
@@ -147,14 +142,6 @@ export class HistoryController {
         this.detailController.render(this.cb.getRecords()[this.selectedHistoryIndex], false);
       }
     };
-    this.els.reviewThreshold.onchange = () => {
-      localStorage.setItem(REVIEW_THRESHOLD_KEY, this.els.reviewThreshold.value);
-      this.renderReviewCandidates();
-    };
-    this.els.btnRefreshReview.onclick = () => {
-      localStorage.setItem(REVIEW_THRESHOLD_KEY, this.els.reviewThreshold.value);
-      this.renderReviewCandidates();
-    };
     this.els.btnCloseHistory.onclick = () => this.closeModal();
     this.els.btnViewHistorySolution.onclick = () => {
       const solve = this.selectedHistoryIndex === null ? undefined : this.cb.getRecords()[this.selectedHistoryIndex];
@@ -163,7 +150,7 @@ export class HistoryController {
     this.els.btnRetryHistory.onclick = () => {
       const solve = this.selectedHistoryIndex === null ? undefined : this.cb.getRecords()[this.selectedHistoryIndex];
       if (this.selectedHistoryIndex === null || !solve?.scramble) return;
-      this.cb.onRetry(solve.scramble);
+      this.cb.onRetry(solve);
       this.closeModal();
     };
     this.els.btnDeleteHistory.onclick = () => {
@@ -187,7 +174,7 @@ export class HistoryController {
     this.els.historyToday.textContent = `${todayCount} 次`;
     const scoredSolves = visibleHistory
       .map(({ solve }) => solve)
-      .filter((solve) => resolvePersistedSolveTrust(solve).scoreEligible);
+      .filter((solve) => resolvePersistedSolveTrust(solve).scoreEligible && solve.practiceKind !== "review");
     const averages: Array<[HTMLElement, number]> = [
       [this.els.historyAo5, 5], [this.els.historyAo12, 12], [this.els.historyAo25, 25],
       [this.els.historyAo50, 50], [this.els.historyAo100, 100],
@@ -221,7 +208,6 @@ export class HistoryController {
       });
     });
     this.renderDeviceHistory(visibleHistory.map(({ solve }) => solve));
-    this.renderReviewCandidates();
     this.renderPerformanceChart(scoredSolves.map((solve) => getWcaScore({ duration: solve.totalDuration, penalty: solve.penalty })).filter(Number.isFinite));
   }
 
@@ -244,6 +230,7 @@ export class HistoryController {
   }
 
   openDetail(solve: AnalysisInput, showSolution: boolean): void {
+    this.selectedHistoryIndex = this.cb.getRecords().indexOf(solve);
     this.detailController.render(solve, showSolution);
     this.els.historyModal.classList.add("open");
   }
@@ -265,6 +252,7 @@ export class HistoryController {
     if (this.selectedHistoryGroup === "all") return true;
     if (this.selectedHistoryGroup === "normal") return !isPracticeSolve(solve);
     if (this.selectedHistoryGroup === "practice") return isPracticeSolve(solve);
+    if (this.selectedHistoryGroup === "practice-review") return solve.practiceKind === "review";
     if (this.selectedHistoryGroup === "practice-formula") return solve.practiceKind === "formula";
     if (this.selectedHistoryGroup === "practice-cross") return solve.practiceKind === "cross";
     if (this.selectedHistoryGroup === "practice-f2l") return solve.practiceKind === "f2l";
@@ -273,6 +261,7 @@ export class HistoryController {
   }
 
   private getPracticeLabel(solve: AnalysisInput): string {
+    if (solve.practiceKind === "review") return "原题复习";
     if (solve.practiceKind === "formula") return solve.practiceFormulaId ? `公式 ${solve.practiceFormulaId}` : "公式练习";
     if (solve.practiceKind === "cross") return "Cross 练习";
     if (solve.practiceKind === "f2l") return "F2L 练习";
@@ -296,50 +285,6 @@ export class HistoryController {
 
   private renderDeviceHistory(solves: AnalysisInput[]): void {
     this.els.deviceHistory.innerHTML = renderDeviceHistoryHtml(solves);
-  }
-
-  private renderReviewCandidates(): void {
-    const records = this.cb.getRecords();
-    const eligible = records
-      .map((solve, index) => ({ solve, index }))
-      .filter(({ solve }) => resolvePersistedSolveTrust(solve).scoreEligible && !isPracticeSolve(solve));
-    const recent = eligible.slice(-100);
-    const scoreOf = (solve: AnalysisInput): number => getWcaScore({ duration: solve.totalDuration, penalty: solve.penalty });
-    const slowest = [...recent].sort((a, b) => scoreOf(b.solve) - scoreOf(a.solve)).slice(0, 10);
-    const thresholdSeconds = Math.max(0, Number(this.els.reviewThreshold.value) || 0);
-    const selected = new Map<number, { solve: AnalysisInput; index: number }>();
-    for (const item of slowest) selected.set(item.index, item);
-    for (const item of recent) {
-      if (scoreOf(item.solve) / 1000 >= thresholdSeconds) selected.set(item.index, item);
-    }
-
-    const candidates = [...selected.values()].sort((a, b) => scoreOf(b.solve) - scoreOf(a.solve));
-    this.els.reviewList.innerHTML = candidates.length === 0
-      ? "当前没有符合条件的成绩。"
-      : candidates.map(({ solve, index }, rankIndex) => {
-        const insight = getReviewInsight(solve);
-        return `
-        <button class="review-entry${rankIndex < 3 ? " review-entry-top" : ""}" data-review-index="${index}">
-          <span class="review-rank">#${index + 1}</span>
-          <span class="review-time">${formatSolveTimeLocal(solve)}<i>${solve.penalty === "dnf" ? "" : "s"}</i></span>
-          <span class="review-tps">${(solve.tps ?? 0).toFixed(2)} TPS</span>
-          <span class="review-insight">
-            <b class="review-bottleneck">${insight.bottleneck}</b>
-            <span class="review-reason">${insight.reason}</span>
-            <span class="review-advice">${insight.advice}</span>
-          </span>
-        </button>
-      `;
-      }).join("");
-    this.els.reviewList.querySelectorAll<HTMLButtonElement>("[data-review-index]").forEach((entry) => {
-      entry.addEventListener("click", () => {
-        const index = Number(entry.dataset.reviewIndex);
-        if (!Number.isInteger(index) || !records[index]) return;
-        this.selectedHistoryIndex = index;
-        this.detailController.render(records[index], false);
-        this.els.historyModal.classList.add("open");
-      });
-    });
   }
 
   private renderPerformanceChart(durations: number[]): void {

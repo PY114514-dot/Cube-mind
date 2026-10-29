@@ -61,6 +61,8 @@ export interface SolveCompletionDependencies {
   history: SolveCompletionHistory;
   practice: SolveCompletionPractice;
   getCaseReference: CaseEventAssemblyInput["getCaseReference"];
+  onReviewComplete?: (input: AnalysisInput) => void;
+  onRecordReady?: (input: AnalysisInput) => void;
   log: (msg: string, type?: "info" | "move" | "error") => void;
 }
 
@@ -87,7 +89,9 @@ function showCompletedAnalysis(
   analysis: CompletedSolveAnalysis, physicalState: PhysicalCubeState,
 ): void {
   const { trust, cfopResult, f2lSlotAnalysis } = analysis;
-  if (trust.state === "score-only") {
+  if (state.review && trust.state !== "analysis-ready") {
+    deps.log("本次原题复习未通过完整动作核验，仅保留记录，不比较改善。", "error");
+  } else if (trust.state === "score-only") {
     deps.log(physicalState === "unavailable"
       ? "GAN v4 未提供可验证实体局面；连续动作已计分，但动作回放未闭合，不生成 CFOP/AI 分析"
       : "实体魔方已确认复原；本把计入成绩，但动作流不完整，不生成 CFOP/AI 分析", "error");
@@ -102,7 +106,8 @@ function showCompletedAnalysis(
   els.cfopOutput.hidden = isFocusedFormulaPractice;
   els.cfopOutput.textContent = cfopResult && f2lSlotAnalysis
     ? `${formatCfop(cfopResult, f2lSlotAnalysis.targetFace)}\n\n${formatF2lSlotAnalysis(f2lSlotAnalysis)}`
-    : getUnavailableCfopMessage(trust.state, physicalState);
+    : state.review ? "本次原题复习未通过完整动作核验，请重练本题。\n不计入常规 PB、AO 或 AI 实战基准。"
+      : getUnavailableCfopMessage(trust.state, physicalState);
   els.cfopModal.classList.add("open");
   if (cfopResult) deps.log(`CFOP 识别完成: ${cfopResult.segments.length} 个阶段`);
 }
@@ -128,7 +133,7 @@ function finishRecordedSolve(state: AppState, deps: SolveCompletionDependencies,
       deps.log(`专项练习失败：${state.practice.session.formula.id}，可重新开始本次`, "error");
     }
   }
-  deps.log(plan.statusMessage, plan.statusLevel);
+  deps.log(input.review ? "原题复习已记录，不计入常规成绩" : plan.statusMessage, plan.statusLevel);
   state.practice.awaitingNextScramble = plan.awaitingNextScramble;
   state.practice.postSolveMoves = [];
   state.solve.hasPermanentMoveGap = false;
@@ -136,11 +141,41 @@ function finishRecordedSolve(state: AppState, deps: SolveCompletionDependencies,
   deps.log(saved ? "成绩已保存；点击右下角 AI 可按需分析历史成绩" : "成绩仅保留在本次页面，请导出 JSON 备份", saved ? "info" : "error");
 }
 
+function createRecord(els: SolveCompletionElements, state: AppState, deps: SolveCompletionDependencies,
+  analysis: CompletedSolveAnalysis, physicalState: PhysicalCubeState, scrambleMoves: string[]) {
+  const timerState = deps.timer.getState();
+  const totalDuration = deps.timer.getDuration();
+  const practiceKind = state.practice.session ? "formula" : state.practice.blockMode ?? undefined;
+  return buildCompletedSolveRecord({
+    completedAt: Date.now(),
+    deviceName: els.deviceName.textContent?.trim() || "未标识魔方",
+    deviceId: deps.ble.getDeviceId(),
+    groupId: !practiceKind && !SYSTEM_HISTORY_GROUP_IDS.has(deps.history.getSelectedGroup()) ? deps.history.getSelectedGroup() : undefined,
+    scrambleMoves,
+    moves: timerState.moves,
+    solveStartTime: timerState.startTime,
+    solveEndTime: timerState.endTime,
+    totalDuration,
+    inspectionDuration: state.solve.inspectionDuration > 0 ? state.solve.inspectionDuration : undefined,
+    penalty: state.solve.inspectionPenalty,
+    physicalState,
+    analysis,
+    blockPractice: state.practice.blockMode ? { mode: state.practice.blockMode, completed: state.practice.blockCompleted } : undefined,
+    formulaPractice: state.practice.session ? {
+      category: state.practice.session.formula.category,
+      formulaId: state.practice.session.formula.id,
+      caseVerified: state.practice.caseVerified,
+      referenceAlgorithm: { name: state.practice.session.formula.name, moves: state.practice.session.formula.moves },
+    } : undefined,
+  });
+}
+
 export function createSolveCompletionController(els: SolveCompletionElements, state: AppState, deps: SolveCompletionDependencies) {
   async function onSolveComplete(signal: AbortSignal): Promise<void> {
     if (signal.aborted) return;
     const timerState = deps.timer.getState();
     const practiceSession = state.practice.session;
+    const reviewSession = state.review;
     const scrambleProgress = state.scramble.progress;
     const formulaPractice = state.practice.session?.formula;
     if (timerState.moves.length === 0) {
@@ -153,7 +188,7 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
     const hardwareFacelets = await deps.ble.requestCurrentFacelets();
     // 回读可能跨越重置、断连或训练切换，过期结果不能修改 UI、历史与新一轮状态。
     if (signal.aborted || deps.timer.getState() !== timerState || state.practice.session !== practiceSession
-      || state.scramble.progress !== scrambleProgress) return;
+      || state.scramble.progress !== scrambleProgress || state.review !== reviewSession) return;
     const physicalState = hardwareFacelets === null
       ? "unavailable"
       : hardwareFacelets === SOLVED_FACELET ? "confirmed-solved" : "confirmed-unsolved";
@@ -173,31 +208,14 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
     showCompletedAnalysis(els, state, deps, completedAnalysis, physicalState);
 
     const previousSolve = state.recentSolves[state.recentSolves.length - 1];
-    const totalDuration = deps.timer.getDuration();
-    const practiceKind = state.practice.session ? "formula" : state.practice.blockMode ?? undefined;
-    const completedRecord = buildCompletedSolveRecord({
-      completedAt: Date.now(),
-      deviceName: els.deviceName.textContent?.trim() || "未标识魔方",
-      deviceId: deps.ble.getDeviceId(),
-      groupId: !practiceKind && !SYSTEM_HISTORY_GROUP_IDS.has(deps.history.getSelectedGroup()) ? deps.history.getSelectedGroup() : undefined,
-      scrambleMoves,
-      moves: timerState.moves,
-      solveStartTime: timerState.startTime,
-      solveEndTime: timerState.endTime,
-      totalDuration,
-      inspectionDuration: state.solve.inspectionDuration > 0 ? state.solve.inspectionDuration : undefined,
-      penalty: state.solve.inspectionPenalty,
-      physicalState,
-      analysis: completedAnalysis,
-      blockPractice: state.practice.blockMode ? { mode: state.practice.blockMode, completed: state.practice.blockCompleted } : undefined,
-      formulaPractice: state.practice.session ? {
-        category: state.practice.session.formula.category,
-        formulaId: state.practice.session.formula.id,
-        caseVerified: state.practice.caseVerified,
-        referenceAlgorithm: { name: state.practice.session.formula.name, moves: state.practice.session.formula.moves },
-      } : undefined,
-    });
+    const completedRecord = createRecord(els, state, deps, completedAnalysis, physicalState, scrambleMoves);
     const { input, formulaPracticeSucceeded, blockPracticeSucceeded } = completedRecord;
+    if (reviewSession) {
+      input.practiceKind = "review";
+      input.review = reviewSession.queue[reviewSession.index];
+      delete input.groupId;
+    }
+    deps.onRecordReady?.(input);
     const completionPlan = buildSolveCompletionPlan({
       analysisEligible: solveTrust.analysisEligible,
       physicalState,
@@ -212,6 +230,7 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
     renderStepReview(resultElements, input, formulaPractice?.category);
     renderSolveTimeline(els.solveTimeline, input, { focusStage: formulaPractice?.category });
     finishRecordedSolve(state, deps, input, completionPlan);
+    if (reviewSession) deps.onReviewComplete?.(input);
   }
 
   return { onSolveComplete };

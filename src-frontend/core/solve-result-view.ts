@@ -62,6 +62,7 @@ export function buildStepReviewPresentation(review: NonNullable<AnalysisInput["s
 }
 
 function buildMetrics(current: AnalysisInput, previous: AnalysisInput | undefined): SolveResultMetric[] {
+  if (current.practiceKind === "review" || previous?.practiceKind === "review") previous = undefined;
   return [
     metric("观察", current.inspectionDuration ?? 0, previous?.inspectionDuration, "s", current.inspectionDuration ? formatSeconds(current.inspectionDuration) : "—"),
     metric("TPS", current.tps ?? 0, previous?.tps, "", (current.tps ?? 0).toFixed(2)),
@@ -89,7 +90,7 @@ function buildAction(current: AnalysisInput, scoreEligible: boolean, analysisEli
 }
 
 function getPracticeAction(current: AnalysisInput): SolveResultAction | undefined {
-  if (!current.practiceKind) return undefined;
+  if (!current.practiceKind || current.practiceKind === "review") return undefined;
   const success = current.practiceOutcome === "success";
   const detail = current.practiceKind === "formula"
     ? `识别 ${formatSeconds(current.recognitionDuration ?? 0)} · 执行 ${formatSeconds(current.executionDuration ?? 0)}`

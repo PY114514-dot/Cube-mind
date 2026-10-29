@@ -59,6 +59,10 @@
     <button id="btn-end-practice" class="danger">终止练习</button>
   </div>
 
+  <div class="review-banner" id="review-banner" hidden>
+    <div><strong id="review-info"></strong><small>按提示转到原题局面，无需断开魔方；完成后可再练一次或进入下一题。</small></div>
+    <button id="btn-end-review" type="button" class="ghost">结束复习</button>
+  </div>
   <div class="workspace-heading">
     <div><h2>训练台</h2><p>专注每一次复原</p></div>
     <span class="session-type">3 × 3 <span>CFOP</span></span>
@@ -144,11 +148,12 @@
   <section class="training-dashboard" aria-labelledby="training-dashboard-title">
     <div class="training-dashboard-heading"><h2 id="training-dashboard-title">下一项训练</h2><span>练习弱项，再回到实战</span></div>
     <div id="training-dashboard"></div>
+    <div id="review-home" class="review-home" hidden></div>
   </section>
 
   <nav class="bottom-tabs" aria-label="数据面板">
     <button data-panel="panel-history">历史</button>
-    <button data-panel="panel-review">复盘训练</button>
+    <button data-panel="panel-review">原题复习</button>
     <button data-panel="panel-trend">成绩趋势</button>
   </nav>
 
@@ -184,12 +189,10 @@
   <section class="tab-panel" id="panel-review" hidden>
     <div id="review-section">
       <div class="review-controls">
-        <label for="review-threshold">筛选超过</label>
-        <input id="review-threshold" type="number" min="0" step="0.1" value="15">
-        <span>秒的成绩</span>
-        <button id="btn-refresh-review" class="ghost">更新</button>
+        <button id="btn-start-review" type="button">连续复习</button>
       </div>
-      <p class="review-hint">自动选取最近 100 把中的最慢 10 把，并合并超过阈值的成绩。</p>
+      <p class="review-hint">从最近 100 把可信常规复原中，挑选用时、步数或 CASE 停顿突出的最多 10 题。同题重练单独记录，不计入常规 PB 和 AO。</p>
+      <p id="review-summary" class="review-hint" aria-live="polite"></p>
       <div class="review-list" id="review-list">完成更多成绩后生成复盘训练。</div>
     </div>
   </section>
@@ -215,6 +218,7 @@
       </div>
       <div class="solve-summary" id="cfop-summary"></div>
       <div id="result-next-action"></div>
+      <div id="f2l-solutions" hidden></div>
       <div id="solve-timeline"></div>
       <h3 class="result-section-title">详细解法</h3>
       <pre class="cfop-output" id="cfop-output">（等待本次解法）</pre>

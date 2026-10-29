@@ -1,13 +1,16 @@
-import type { AnalysisInput, AnalysisResult } from "../../src-shared/analysis-types.ts";
+import type { AnalysisInput, AnalysisResult, SolveReviewTarget } from "../../src-shared/analysis-types.ts";
 import { resolveCoachingReplay } from "../../src-shared/analysis-coaching.ts";
 import { SolveReplayPlayer } from "./solve-replay-player.ts";
 import { renderAnalysisCard } from "./analysis-markup.ts";
+import { createReviewTarget } from "../core/solve-review-session.ts";
+import { F2lSolutionPanel } from "./f2l-solution-panel.ts";
 
 export interface AnalysisRendererElements { agentOutput: HTMLDivElement; }
 
 export interface AnalysisRendererCallbacks {
   log: (msg: string, type?: "info" | "move" | "error") => void;
   escapeHtml: (s: string) => string;
+  onReview?: (target: SolveReviewTarget) => void;
   formulaLibrary: {
     openForBottleneck(stage: string, stageDuration: number, totalDuration: number): void;
     openFormulaPractice(formulaId: string): void;
@@ -27,6 +30,7 @@ export function createAnalysisRenderer(elements: AnalysisRendererElements, cb: A
   const output = elements.agentOutput;
   let fullPlayer: SolveReplayPlayer | null = null;
   let issuePlayer: SolveReplayPlayer | null = null;
+  let f2lPanel: F2lSolutionPanel | null = null;
 
   function showIssueReplay(input: AnalysisInput, evidenceId: string): void {
     const target = resolveCoachingReplay(input, evidenceId);
@@ -46,15 +50,19 @@ export function createAnalysisRenderer(elements: AnalysisRendererElements, cb: A
       onPlay: () => fullPlayer?.pause(),
       segment: { startMoveIndex: target.startMoveIndex, endMoveIndex: target.endMoveIndex },
     });
+    f2lPanel?.render(target.solve);
     panel.focus({ preventScroll: true });
     panel.scrollIntoView({ block: "nearest" });
   }
 
   function renderAgentResult(result: AnalysisResult, input: AnalysisInput): void {
+    f2lPanel?.destroy();
     fullPlayer?.destroy();
     issuePlayer?.destroy();
     fullPlayer = issuePlayer = null;
     output.innerHTML = renderAnalysisCard(result, input, escapeHtml);
+    const f2lRoot = output.querySelector<HTMLElement>("[data-analysis-f2l]");
+    if (f2lRoot) { f2lPanel = new F2lSolutionPanel(f2lRoot, escapeHtml); f2lPanel.render(input); }
     const fullRoot = output.querySelector<HTMLElement>("[data-analysis-solution-preview]");
     if (fullRoot && input.moves) fullPlayer = new SolveReplayPlayer(fullRoot, input, {
       title: "最近一把 · 完整解法", onPlay: () => issuePlayer?.pause(),
@@ -68,6 +76,21 @@ export function createAnalysisRenderer(elements: AnalysisRendererElements, cb: A
     output.querySelector<HTMLButtonElement>("#btn-practice")?.addEventListener("click", () => {
       const stage = result.bottleneckStage ?? "";
       formulaLibrary.openForBottleneck(stage, getStageDuration(input, stage), input.totalDuration);
+    });
+    output.querySelectorAll<HTMLButtonElement>("[data-issue-review-index]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const id = result.issues?.[Number(button.dataset.issueReviewIndex)]?.evidenceId;
+        const replay = id ? resolveCoachingReplay(input, id) : null;
+        if (!replay) return;
+        const event = replay.solve.caseEvents?.find((item) => item.startMoveIndex === replay.startMoveIndex && item.endMoveIndex === replay.endMoveIndex);
+        const target = createReviewTarget(replay.solve, event);
+        if (target && id?.startsWith("f2l-solution:")) target.goal = {
+          kind: "moves", baseline: target.moveCount,
+          reason: "从 F2L 少步建议重练原题，比较整把步数（相邻同面合并）",
+        };
+        if (target) cb.onReview?.(target);
+        else log("此记录缺少可验证的原题与完整解法，无法重练", "error");
+      });
     });
     output.querySelectorAll<HTMLButtonElement>("[data-focus-formula-index]").forEach((button) => {
       button.addEventListener("click", () => {
