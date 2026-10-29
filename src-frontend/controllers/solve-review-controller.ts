@@ -1,6 +1,6 @@
 import type { AnalysisInput, SolveReviewTarget } from "../../src-shared/analysis-types.ts";
 import type { AppState } from "../core/app-state.ts";
-import { compareReviewSolve, selectReviewTargets, summarizeReviewSession, type SolveReviewSession } from "../core/solve-review-session.ts";
+import { compareReviewSolve, selectDailyReview, summarizeReviewSession, type SolveReviewSession } from "../core/solve-review-session.ts";
 import { renderReviewCandidates, renderReviewComparison } from "../ui/solve-review-markup.ts";
 
 export interface SolveReviewElements {
@@ -100,23 +100,39 @@ export function createSolveReviewController(els: SolveReviewElements, state: App
     if (event.target.closest("[data-review-again]")) prepare();
     if (event.target.closest("[data-review-next]")) next();
   });
-  return { start, render, next, retry: prepare, complete, cancel };
+  return { init: () => watchReviewDay(render), start, render, next, retry: prepare, complete, cancel };
 }
 
 function renderQueue(els: SolveReviewElements, state: AppState, deps: SolveReviewDependencies): SolveReviewTarget[] {
-  const candidates = selectReviewTargets(state.recentSolves);
-  els.reviewList.innerHTML = renderReviewCandidates(candidates, deps.escapeHtml);
+  const daily = selectDailyReview(state.recentSolves);
+  const candidates = daily.targets;
+  const date = new Date(daily.date).toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
+  const description = `昨日 ${date} · ${daily.sampleCount} 把可信常规复原 · ${candidates.length} 道原题`;
+  els.reviewList.innerHTML = `<p class="review-hint">${description}</p>${renderReviewCandidates(candidates, deps.escapeHtml)}`;
   els.btnStartReview.disabled = candidates.length === 0;
   els.btnStartReview.textContent = `连续复习${candidates.length ? ` ${candidates.length} 题` : ""}`;
-  els.reviewHome.innerHTML = candidates.length ? `<div class="review-home-copy"><strong>有 ${candidates.length} 道原题值得再练</strong><span>${deps.escapeHtml(candidates[0].goal.reason)}</span></div>
-    <button type="button" class="ghost" data-review-all>开始复习</button>` : "";
-  els.reviewHome.hidden = candidates.length === 0;
+  els.reviewHome.innerHTML = `<div class="review-home-copy"><strong>今日智能复习${candidates.length ? ` · ${candidates.length} 题` : ""}</strong><span>${description}</span></div>
+    ${candidates.length ? '<button type="button" class="ghost" data-review-all>开始复习</button>' : '<span>昨天暂无可复习成绩</span>'}`;
+  els.reviewHome.hidden = false;
   const session = state.review;
   els.reviewBanner.hidden = !session;
   els.btnNextScramble.textContent = !session ? "新打乱" : session.result && compareReviewSolve(session.result).completed
     ? (session.index === session.queue.length - 1 ? "结束复习" : "下一题") : "重置本题";
   if (session) els.reviewInfo.textContent = `原题复习 ${session.index + 1}/${session.queue.length} · ${session.queue[session.index].goal.reason}`;
   return candidates;
+}
+
+function watchReviewDay(render: () => void): void {
+  let timer: number | undefined;
+  const refresh = (): void => {
+    window.clearTimeout(timer);
+    render();
+    const next = new Date(Date.now());
+    next.setHours(24, 0, 0, 0);
+    timer = window.setTimeout(refresh, Math.max(1, next.getTime() - Date.now()));
+  };
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+  refresh();
 }
 
 function renderResult(els: SolveReviewElements, session: SolveReviewSession, input: AnalysisInput, escapeHtml: SolveReviewDependencies["escapeHtml"]): void {

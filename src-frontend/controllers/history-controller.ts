@@ -92,7 +92,6 @@ export class HistoryController {
   ) {
     this.detailController = new HistoryDetailController(
       { detail: els.historyDetail, retryButton: els.btnRetryHistory, solutionButton: els.btnViewHistorySolution },
-      () => this.isDetailedMode(),
       cb.getF2lSolutions,
     );
   }

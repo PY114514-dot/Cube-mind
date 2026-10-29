@@ -11,7 +11,8 @@ export function renderReviewComparison(solve: AnalysisInput, escapeHtml: EscapeH
   if (!solve.review) return "";
   const result = compareReviewSolve(solve);
   const target = solve.review;
-  const label = target.goal.kind === "case-pause" ? `${target.goal.caseId} 起手间隔` : target.goal.kind === "duration" ? "复原用时" : "总步数";
+  const label = target.goal.kind === "case-pause" ? `${target.goal.caseId} 起手间隔`
+    : target.goal.kind === "duration" ? "复原用时" : target.goal.kind === "pause" ? "最长停顿" : "总步数";
   const change = result.delta === null ? "暂不比较" : result.delta === 0 ? "与原题持平"
     : `${result.delta < 0 ? "减少" : "增加"} ${formatReviewMetric(target, Math.abs(result.delta))}`;
   return `<div class="review-comparison">
@@ -22,7 +23,7 @@ export function renderReviewComparison(solve: AnalysisInput, escapeHtml: EscapeH
 }
 
 export function renderReviewCandidates(targets: SolveReviewTarget[], escapeHtml: EscapeHtml): string {
-  if (!targets.length) return '<p class="review-hint">暂无明显弱项原题。继续完成常规复原，或从历史详情手选一题重练。</p>';
+  if (!targets.length) return '<p class="review-hint">昨天没有可重建的可信常规复原。完成今天的训练，明天会自动选题；也可从历史详情手选原题。</p>';
   return targets.map((target, index) => `<article class="review-entry">
     <span class="review-rank">${index + 1}</span>
     <span class="review-time">${(target.totalDuration / 1000).toFixed(2)}<i>s</i></span>

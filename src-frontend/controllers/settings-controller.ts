@@ -62,7 +62,7 @@ export class SettingsController {
     this.settings = settings;
     this.applyToDom(settings);
     this.els.settingsModal.classList.remove("open");
-    this.logFn(`设置已保存：十字 ${settings.crossMaxSteps} 步，${settings.inspectionEnabled ? `${settings.inspectionSeconds} 秒观察` : "关闭正常观察"}`);
+    this.logFn(`设置已保存：十字 ${settings.crossMaxSteps} 步，${settings.inspectionEnabled ? `${settings.inspectionSeconds} 秒观察` : "关闭观察倒计时"}`);
   }
 
   private applyToDom(settings: AppSettings): void {

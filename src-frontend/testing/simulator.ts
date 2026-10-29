@@ -72,6 +72,7 @@ async function checkCancellation(): Promise<void> {
 async function checkNormalSolve(): Promise<void> {
   const before = localStorage.getItem(HISTORY_STORAGE_KEY);
   await prepareNormalSolve();
+  await delay(350);
   await sendMoves(ganCube.getSolution());
   await waitFor(() => localStorage.getItem(HISTORY_STORAGE_KEY) !== before);
   const solves = records();
@@ -130,7 +131,7 @@ async function selfCheck(status: HTMLElement): Promise<void> {
   await checkPractice();
   status.textContent = "自检 4/4：原题重练、额外转动与成绩隔离…";
   await checkReview();
-  status.textContent = "自检通过 · 原题复习、成绩隔离与 F2L 训练正常";
+  status.textContent = "自检通过 · 观察用时、原题复习与 F2L 训练正常";
 }
 
 async function checkReview(): Promise<void> {
@@ -143,10 +144,13 @@ async function checkReview(): Promise<void> {
     await sendMoves(remainingMoves());
     await waitFor(() => !element("#inspection-status").hidden);
     const before = records().length;
+    await delay(350);
     await sendMoves(ganCube.getSolution());
     await waitFor(() => records().length > before);
     const current = records()[records().length - 1];
     assert(current.practiceKind === "review" && Boolean(current.review), "重练没有保存原题关联");
+    assert((current.inspectionDuration ?? 0) >= 350, "原题自由观察未记录用时");
+    assert(element("#cfop-summary").textContent?.includes("观察用时") ?? false, "成绩缺少观察用时");
     assert(element("#stat-count").textContent === count, "重练污染了常规成绩次数");
     assert(element("#result-next-action").textContent?.includes("原题复习") ?? false, "缺少复习结果");
     if (attempt === 0) {

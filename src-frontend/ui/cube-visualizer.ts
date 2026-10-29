@@ -62,7 +62,7 @@ export class CubeVisualizer {
         return;
       }
       this.renderer.applyTurn(animationDuration === undefined ? animation : {
-        ...animation, duration: Math.min(animation.duration, animationDuration),
+        ...animation, duration: Math.max(0, animationDuration),
       }, facelets);
     } catch (err) {
       console.error("[cube-visualizer] 无法同步 move:", err);

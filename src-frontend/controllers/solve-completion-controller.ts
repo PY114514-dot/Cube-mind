@@ -137,7 +137,7 @@ function finishRecordedSolve(state: AppState, deps: SolveCompletionDependencies,
   state.practice.awaitingNextScramble = plan.awaitingNextScramble;
   state.practice.postSolveMoves = [];
   state.solve.hasPermanentMoveGap = false;
-  state.solve.inspectionDuration = 0;
+  state.solve.inspectionDuration = undefined;
   deps.log(saved ? "成绩已保存；点击右下角 AI 可按需分析历史成绩" : "成绩仅保留在本次页面，请导出 JSON 备份", saved ? "info" : "error");
 }
 
@@ -156,7 +156,7 @@ function createRecord(els: SolveCompletionElements, state: AppState, deps: Solve
     solveStartTime: timerState.startTime,
     solveEndTime: timerState.endTime,
     totalDuration,
-    inspectionDuration: state.solve.inspectionDuration > 0 ? state.solve.inspectionDuration : undefined,
+    inspectionDuration: state.solve.inspectionDuration,
     penalty: state.solve.inspectionPenalty,
     physicalState,
     analysis,

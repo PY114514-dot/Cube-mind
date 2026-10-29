@@ -8,6 +8,7 @@ import { canReviewSolve } from "../core/solve-review-session.ts";
 import { renderReviewComparison } from "./solve-review-markup.ts";
 import { F2lSolutionPanel } from "./f2l-solution-panel.ts";
 import type { F2lSolutionReview } from "../../src-shared/analysis-types.ts";
+import { formatInspectionDuration } from "../core/solve-result-view.ts";
 
 export interface HistoryDetailElements {
   detail: HTMLDivElement;
@@ -22,7 +23,6 @@ export class HistoryDetailController {
 
   constructor(
     private readonly elements: HistoryDetailElements,
-    private readonly isDetailedScoreMode: () => boolean,
     private readonly getF2lSolutions?: (solve: AnalysisInput) => F2lSolutionReview[],
   ) {}
 
@@ -33,16 +33,13 @@ export class HistoryDetailController {
     const solution = showSolution
       ? (solve.moves && targetFace ? formatMovesForWhiteBottom(solve.moves, targetFace).join(" ") : solve.moves?.join(" ")) || "未保存解法序列"
       : "点击\"查看解法\"显示本次还原步骤。";
-    const inspectionValue = solve.inspectionDuration ? `${(solve.inspectionDuration / 1000).toFixed(2)}s` : "—";
-    const inspectionMetric = this.isDetailedScoreMode()
-      ? `<div><span>观察</span><strong>${inspectionValue}</strong></div>` : "";
     const showReplay = Boolean(showSolution && solve.scramble && solve.moves?.length);
     const quality = presentSolveQuality(solve.qualityStatus, solve.qualityAnomalies);
     if (solve.practiceKind === "review") quality.description = "原题复习单独保存，不计入常规 PB、AO 或 AI 实战基准。";
     this.elements.detail.innerHTML = `
       <div class="history-detail-grid">
         <div><span>成绩</span><strong>${formatWcaSolveTime({ duration: solve.totalDuration, penalty: solve.penalty })}${solve.penalty === "dnf" ? "" : "s"}</strong></div>
-        ${inspectionMetric}
+        <div><span>观察用时</span><strong>${formatInspectionDuration(solve.inspectionDuration)}</strong></div>
         <div><span>TPS</span><strong>${solve.tps?.toFixed(2) ?? "—"}</strong></div>
       </div>
       ${showReplay ? "" : '<div data-history-timeline></div>'}

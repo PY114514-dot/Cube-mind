@@ -64,9 +64,15 @@ export function buildStepReviewPresentation(review: NonNullable<AnalysisInput["s
 function buildMetrics(current: AnalysisInput, previous: AnalysisInput | undefined): SolveResultMetric[] {
   if (current.practiceKind === "review" || previous?.practiceKind === "review") previous = undefined;
   return [
-    metric("观察", current.inspectionDuration ?? 0, previous?.inspectionDuration, "s", current.inspectionDuration ? formatSeconds(current.inspectionDuration) : "—"),
+    metric("观察用时", current.inspectionDuration ?? 0, current.inspectionDuration === undefined ? undefined : previous?.inspectionDuration,
+      "s", formatInspectionDuration(current.inspectionDuration)),
     metric("TPS", current.tps ?? 0, previous?.tps, "", (current.tps ?? 0).toFixed(2)),
   ];
+}
+
+/** 缺少观察数据与真实零秒分开显示，不为旧成绩推测观察时间。 */
+export function formatInspectionDuration(duration: number | undefined): string {
+  return duration !== undefined && Number.isFinite(duration) && duration >= 0 ? formatSeconds(duration) : "未记录";
 }
 
 function metric(label: string, current: number, previous: number | undefined, unit: "s" | "", value: string): SolveResultMetric {

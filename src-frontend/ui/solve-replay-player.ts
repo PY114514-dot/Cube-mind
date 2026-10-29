@@ -5,7 +5,9 @@ import { renderSolveTimeline } from "./solve-timeline.ts";
 import { formatMovesForWhiteBottom, getSolveTargetFace } from "../core/solve-notation.ts";
 import { invertMove } from "../core/scramble-tracker.ts";
 
-const SPEEDS = [0.5, 1, 2, 4] as const;
+const SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
+const DEMO_STEP_MS = 700;
+const DEMO_TURN_MS = 450;
 
 export interface SolveReplayPlayerOptions {
   title?: string;
@@ -33,17 +35,17 @@ export class SolveReplayPlayer {
   private readonly range: HTMLInputElement;
   private readonly stepLabel: HTMLElement;
   private readonly playButton: HTMLButtonElement;
-  private readonly speedButton: HTMLButtonElement;
+  private readonly speedSelect: HTMLSelectElement;
   private readonly modeButton: HTMLButtonElement;
   private readonly timeLabel: HTMLElement;
   private readonly timestamps: number[] | null;
   private readonly onPlay: (() => void) | undefined;
   private timelineCursor: HTMLElement | null = null;
-  private recordedMode: boolean;
+  private recordedMode = false;
   private elapsed = 0;
   private lastTick = 0;
   private index = 0;
-  private speedIndex = 1;
+  private speed = 1;
   private isPlaying = false;
   private timerId: number | null = null;
   private readonly startIndex: number;
@@ -56,7 +58,6 @@ export class SolveReplayPlayer {
     const view = options.view ?? (getSolveTargetFace(solve.scramble, solve.moves) === "U" ? "yellow-top" : "white-top");
     this.notationMoves = view === "white-top" ? this.solutionMoves : formatMovesForWhiteBottom(this.solutionMoves, "U");
     this.timestamps = buildReplayTimestamps(this.solutionMoves.length, solve.moveGaps);
-    this.recordedMode = this.timestamps !== null;
     this.onPlay = options.onPlay;
     this.startIndex = options.segment?.startMoveIndex ?? 0;
     this.endIndex = options.segment?.endMoveIndex ?? this.solutionMoves.length;
@@ -75,11 +76,11 @@ export class SolveReplayPlayer {
             <button type="button" class="ghost" data-replay-action="back" aria-label="回退一步">‹</button>
             <button type="button" class="practice-btn" data-replay-action="play">播放</button>
             <button type="button" class="ghost" data-replay-action="forward" aria-label="前进一步">›</button>
-            <button type="button" class="ghost" data-replay-action="speed">1×</button>
+            <select data-replay-action="speed" aria-label="播放速度">${SPEEDS.map((speed) => `<option value="${speed}"${speed === this.speed ? " selected" : ""}>${speed}×</option>`).join("")}</select>
             <strong data-replay-step>第 0 步 · 共 ${this.solutionMoves.length} 步</strong>
           </div>
           <input data-replay-progress type="range" min="${this.startIndex}" max="${this.endIndex}" value="${this.startIndex}" step="1" aria-label="按步数跳转解法进度">
-          <div class="solve-replay-timing"><button type="button" class="ghost" data-replay-action="mode" aria-label="切换实速或匀速回放" ${this.timestamps ? "" : "disabled"}></button><span data-replay-time></span></div>
+          <div class="solve-replay-timing"><button type="button" class="ghost" data-replay-action="mode" aria-label="切换慢速演示或实录节奏" ${this.timestamps ? "" : "disabled"}></button><span data-replay-time></span></div>
         </div>
         ${options.segment ? "" : '<div data-replay-timeline></div>'}
       </section>`;
@@ -87,10 +88,10 @@ export class SolveReplayPlayer {
     const range = this.root.querySelector<HTMLInputElement>("[data-replay-progress]");
     const stepLabel = this.root.querySelector<HTMLElement>("[data-replay-step]");
     const playButton = this.root.querySelector<HTMLButtonElement>("[data-replay-action=play]");
-    const speedButton = this.root.querySelector<HTMLButtonElement>("[data-replay-action=speed]");
+    const speedSelect = this.root.querySelector<HTMLSelectElement>("[data-replay-action=speed]");
     const modeButton = this.root.querySelector<HTMLButtonElement>("[data-replay-action=mode]");
     const timeLabel = this.root.querySelector<HTMLElement>("[data-replay-time]");
-    if (!cubeRoot || !range || !stepLabel || !playButton || !speedButton || !modeButton || !timeLabel) throw new Error("[replay] 播放器元素未初始化");
+    if (!cubeRoot || !range || !stepLabel || !playButton || !speedSelect || !modeButton || !timeLabel) throw new Error("[replay] 播放器元素未初始化");
     this.visualizer = new CubeVisualizer(cubeRoot, {
       role: "replay",
       emphasizeChanges: options.emphasizeChanges,
@@ -100,7 +101,7 @@ export class SolveReplayPlayer {
     this.range = range;
     this.stepLabel = stepLabel;
     this.playButton = playButton;
-    this.speedButton = speedButton;
+    this.speedSelect = speedSelect;
     this.modeButton = modeButton;
     this.timeLabel = timeLabel;
     const titleLabel = this.root.querySelector<HTMLElement>("[data-replay-title]");
@@ -131,10 +132,11 @@ export class SolveReplayPlayer {
     this.root.querySelector<HTMLButtonElement>("[data-replay-action=back]")?.addEventListener("click", () => this.step(-1));
     this.root.querySelector<HTMLButtonElement>("[data-replay-action=forward]")?.addEventListener("click", () => this.step(1));
     this.playButton.addEventListener("click", () => this.isPlaying ? this.pause() : this.play());
-    this.speedButton.addEventListener("click", () => {
+    this.speedSelect.addEventListener("change", () => {
       this.advanceClock();
-      this.speedIndex = (this.speedIndex + 1) % SPEEDS.length;
-      this.speedButton.textContent = `${SPEEDS[this.speedIndex]}×`;
+      const speed = Number(this.speedSelect.value);
+      if (SPEEDS.some((value) => value === speed)) this.speed = speed;
+      this.renderProgress();
     });
     this.modeButton.addEventListener("click", () => {
       if (!this.timestamps) return;
@@ -152,7 +154,7 @@ export class SolveReplayPlayer {
     const target = Math.max(this.startIndex, Math.min(this.endIndex, this.index + direction));
     if (target === this.index) return;
     const move = direction === 1 ? this.solutionMoves[this.index] : invertMove(this.solutionMoves[target]);
-    this.visualizer.applyMove(move);
+    this.visualizer.applyMove(move, DEMO_TURN_MS / this.speed);
     this.index = target;
     this.elapsed = this.moveTime(target);
     this.renderProgress();
@@ -179,12 +181,12 @@ export class SolveReplayPlayer {
   private advanceClock(): void {
     if (!this.isPlaying) return;
     const now = performance.now();
-    this.elapsed = Math.min(this.moveTime(this.endIndex), this.elapsed + (now - this.lastTick) * SPEEDS[this.speedIndex]);
+    this.elapsed = Math.min(this.moveTime(this.endIndex), this.elapsed + (now - this.lastTick) * this.speed);
     this.lastTick = now;
   }
 
   private moveTime(index: number): number {
-    return this.recordedMode && this.timestamps ? this.timestamps[index] : index * 260;
+    return this.recordedMode && this.timestamps ? this.timestamps[index] : index * DEMO_STEP_MS;
   }
 
   private playTick(): void {
@@ -200,7 +202,8 @@ export class SolveReplayPlayer {
     this.advanceClock();
     while (this.index < this.endIndex && this.elapsed >= this.moveTime(this.index + 1)) {
       const nextGap = this.index + 1 < this.endIndex ? this.moveTime(this.index + 2) - this.moveTime(this.index + 1) : 120;
-      this.visualizer.applyMove(this.solutionMoves[this.index], Math.max(0, nextGap / SPEEDS[this.speedIndex] - 16));
+      const duration = this.recordedMode ? Math.min(180, Math.max(0, nextGap / this.speed - 16)) : DEMO_TURN_MS / this.speed;
+      this.visualizer.applyMove(this.solutionMoves[this.index], duration);
       this.index++;
     }
     this.renderProgress();
@@ -208,7 +211,7 @@ export class SolveReplayPlayer {
       this.pause();
       return;
     }
-    const remaining = (this.moveTime(this.index + 1) - this.elapsed) / SPEEDS[this.speedIndex];
+    const remaining = (this.moveTime(this.index + 1) - this.elapsed) / this.speed;
     this.timerId = window.setTimeout(() => this.playTick(), Math.min(50, Math.max(1, remaining)));
   }
 
@@ -228,12 +231,14 @@ export class SolveReplayPlayer {
     const moveLabel = this.root.querySelector<HTMLElement>("[data-replay-move]");
     if (moveLabel) moveLabel.textContent = this.index < this.endIndex ? `下一步 ${this.notationMoves[this.index]}`
       : this.endIndex < this.solutionMoves.length ? "片段结束" : "已完成";
-    this.modeButton.textContent = this.recordedMode ? "实速回放" : "匀速演示";
+    this.modeButton.textContent = this.recordedMode ? "实录节奏" : "慢速演示";
     this.modeButton.setAttribute("aria-pressed", String(this.recordedMode));
     const time = this.recordedMode ? this.elapsed : this.timestamps?.[this.index];
     const waiting = this.isPlaying && this.recordedMode && this.index < this.endIndex
       && (this.timestamps?.[this.index + 1] ?? 0) - (this.timestamps?.[this.index] ?? 0) > 300;
-    this.timeLabel.textContent = time === undefined ? "缺少完整动作时间" : `${waiting ? "等待下一步 · " : "动作时间 "}${(time / 1000).toFixed(2)}s`;
+    this.timeLabel.textContent = this.recordedMode && time !== undefined
+      ? `${waiting ? "等待下一步 · " : "动作时间 "}${(time / 1000).toFixed(2)}s`
+      : `每步 ${(DEMO_STEP_MS / this.speed / 1000).toFixed(2)}s · ${time === undefined ? "教学节奏" : `实录动作时间 ${(time / 1000).toFixed(2)}s`}`;
     if (this.timelineCursor && this.timestamps) {
       const progress = (this.recordedMode ? this.elapsed : this.timestamps[this.index]) / Math.max(1, Number(this.timelineCursor.dataset.duration));
       this.timelineCursor.style.left = `${Math.min(100, progress * 100)}%`;

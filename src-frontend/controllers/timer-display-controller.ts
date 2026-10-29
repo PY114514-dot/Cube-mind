@@ -30,7 +30,7 @@ export class TimerDisplayController {
 
   private _inspectionMode: InspectionMode = "idle";
   private inspectionInterval: number | null = null;
-  private inspectionStartedAt = 0;
+  private inspectionStartedAt: number | null = null;
   private pendingPenalty: InspectionPenalty = "none";
   private displayInterval: number | null = null;
 
@@ -44,12 +44,9 @@ export class TimerDisplayController {
     return this._inspectionMode;
   }
 
-  /** 获取观察用时（毫秒），仅在有限观察模式下有效 */
-  getInspectionDuration(): number {
-    if (this._inspectionMode === "limited" && this.inspectionStartedAt > 0) {
-      return Date.now() - this.inspectionStartedAt;
-    }
-    return 0;
+  /** 所有模式记录就绪至首步的等待；只有有限观察参与判罚。 */
+  getInspectionDuration(): number | undefined {
+    return this.inspectionStartedAt === null ? undefined : Math.max(0, Date.now() - this.inspectionStartedAt);
   }
 
   // ====== 计时数字显示 ======
@@ -74,8 +71,9 @@ export class TimerDisplayController {
   // ====== 观察期状态机 ======
 
   beginInspection(): void {
+    this.endInspection();
     this.pendingPenalty = "none";
-    this.inspectionStartedAt = 0;
+    this.inspectionStartedAt = Date.now();
 
     if (this.cb.isPracticeObservation()) {
       this._inspectionMode = "free";
@@ -97,7 +95,6 @@ export class TimerDisplayController {
     }
 
     this._inspectionMode = "limited";
-    this.inspectionStartedAt = Date.now();
     this.renderCountdown();
     this.inspectionInterval = window.setInterval(() => this.renderCountdown(), 50);
     this.cb.log(`进入 ${settings.seconds} 秒观察：转动第一步开始计时`);
@@ -105,7 +102,7 @@ export class TimerDisplayController {
 
   /** 结束观察期，返回并重置 penalty（供 startSolveTimer 消费） */
   consumePenalty(): InspectionPenalty {
-    if (this._inspectionMode === "limited" && this.inspectionStartedAt > 0) {
+    if (this._inspectionMode === "limited" && this.inspectionStartedAt !== null) {
       const settings = this.cb.getInspectionSettings();
       const outcome = getInspectionOutcome(Date.now() - this.inspectionStartedAt, settings.seconds);
       this.pendingPenalty = outcome.penalty;
@@ -121,7 +118,7 @@ export class TimerDisplayController {
   endInspection(): void {
     this.stopCountdown();
     this._inspectionMode = "idle";
-    this.inspectionStartedAt = 0;
+    this.inspectionStartedAt = null;
     this.els.inspectionStatus.hidden = true;
     this.els.inspectionStatus.textContent = "";
   }
@@ -129,7 +126,7 @@ export class TimerDisplayController {
   // ====== 内部 ======
 
   private renderCountdown(): void {
-    if (this._inspectionMode !== "limited") return;
+    if (this._inspectionMode !== "limited" || this.inspectionStartedAt === null) return;
     const settings = this.cb.getInspectionSettings();
     const outcome = getInspectionOutcome(Date.now() - this.inspectionStartedAt, settings.seconds);
     this.els.inspectionStatus.hidden = false;

@@ -3,12 +3,12 @@
 import type { InspectionPenalty } from "./inspection-rules.ts";
 
 export interface InspectionSource {
-  getInspectionDuration(): number;
+  getInspectionDuration(): number | undefined;
   consumePenalty(): InspectionPenalty;
 }
 
 export interface CapturedInspection {
-  duration: number;
+  duration: number | undefined;
   penalty: InspectionPenalty;
 }
 

@@ -24,7 +24,7 @@ export interface AnalysisInput {
   practiceOutcome?: "success" | "failed";
   recognitionDuration?: number;
   executionDuration?: number;
-  /** 观察用时（毫秒），仅在启用观察且非练习模式时有效 */
+  /** 打乱就绪至首步的观察用时（毫秒），含自由观察；不并入复原用时。 */
   inspectionDuration?: number;
   crossPracticeSteps?: number;
   crossPracticePauses?: number;
@@ -114,7 +114,7 @@ export interface AnalysisIssue {
 }
 
 export type SolveReviewGoal = {
-  kind: "duration" | "moves";
+  kind: "duration" | "moves" | "pause";
   baseline: number;
   reason: string;
 } | {

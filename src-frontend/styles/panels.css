@@ -137,7 +137,7 @@ body:has(.modal.open) { overflow: hidden; }
 .solve-result-hero > strong { display: flex; align-items: baseline; gap: 4px; margin: 8px 0; font-family: var(--sans); font-size: 40px; font-weight: 500; line-height: 1; }
 .solve-result-hero > strong small { font-size: 13px; }
 .solve-result-hero p b { color: var(--ink); }
-.solve-stage-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.solve-stage-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
 .solve-stage-metrics > div { padding: 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--muted-surface); }
 .solve-stage-metrics span, .solve-stage-metrics em { display: block; color: var(--warm-gray); font-size: 11px; font-style: normal; }
 .solve-stage-metrics strong { display: block; color: var(--ink); font-family: var(--mono); font-size: 17px; margin: 3px 0; }

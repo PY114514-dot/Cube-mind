@@ -191,7 +191,7 @@
       <div class="review-controls">
         <button id="btn-start-review" type="button">连续复习</button>
       </div>
-      <p class="review-hint">从最近 100 把可信常规复原中，挑选用时、步数或 CASE 停顿突出的最多 10 题。同题重练单独记录，不计入常规 PB 和 AO。</p>
+      <p class="review-hint">每日自动从昨天的本机成绩选题：复原用时最慢的后 10%、步数最多及最长停顿的前 10%。每类向上取整，并列优先较新的成绩，同局面去重。用时不含观察与罚时，停顿超过 0.30 秒才入选。同题重练单独记录，不计入常规 PB 和 AO。</p>
       <p id="review-summary" class="review-hint" aria-live="polite"></p>
       <div class="review-list" id="review-list">完成更多成绩后生成复盘训练。</div>
     </div>
@@ -342,7 +342,7 @@
       <div class="settings-form">
         <label for="setting-cross-steps">十字最大求解步数</label>
         <input id="setting-cross-steps" type="number" min="1" max="12" value="8">
-        <label class="settings-toggle"><input id="setting-inspection-enabled" type="checkbox" checked> 正常计时启用观察</label>
+        <label class="settings-toggle"><input id="setting-inspection-enabled" type="checkbox" checked> 正常计时启用观察倒计时</label>
         <label for="setting-inspection-seconds">观察时长（秒）</label>
         <input id="setting-inspection-seconds" type="number" min="0" max="30" value="15">
         <label for="setting-theme">主界面颜色</label>
@@ -353,7 +353,7 @@
           <option value="violet">紫罗兰</option>
         </select>
       </div>
-      <p class="modal-hint">设置保存在当前浏览器。练习模式会始终跳过观察。</p>
+      <p class="modal-hint">设置保存在当前浏览器。每把记录打乱就绪至首步的观察用时；练习和关闭倒计时时仅记录时长，不做观察超时判罚。</p>
       <div class="formula-actions"><button id="btn-save-settings" class="practice-btn">保存设置</button></div>
     </div>
   </div>

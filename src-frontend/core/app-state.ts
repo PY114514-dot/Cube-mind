@@ -43,7 +43,7 @@ export interface SolveState {
   isFinalizing: boolean;
   lastDeviceMoveCnt: number | undefined;
   inspectionPenalty: InspectionPenalty;
-  inspectionDuration: number;
+  inspectionDuration: number | undefined;
 }
 
 /** 练习模式（块练习 + 公式练习 + 过渡状态） */
@@ -100,7 +100,7 @@ export function createInitialState(recentSolves: AnalysisInput[]): AppState {
       isFinalizing: false,
       lastDeviceMoveCnt: undefined,
       inspectionPenalty: "none",
-      inspectionDuration: 0,
+      inspectionDuration: undefined,
     },
     practice: {
       blockMode: null,

@@ -50,42 +50,53 @@ function caseGoal(event: CaseEvent): SolveReviewGoal {
     caseId: event.caseId, stage: event.stage, referenceAlgorithm: event.referenceAlgorithm };
 }
 
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length ? (sorted[middle] + sorted[Math.max(0, middle - (sorted.length % 2 === 0 ? 1 : 0))]) / 2 : 0;
+export interface DailyReview {
+  date: number;
+  sampleCount: number;
+  targets: SolveReviewTarget[];
 }
 
-/** 最近 100 把中选最多 10 个不同局面，每题只保留一个有实录依据的目标。 */
-export function selectReviewTargets(records: AnalysisInput[]): SolveReviewTarget[] {
-  const recent = records.filter(canReviewSolve).slice(-100);
-  const time = median(recent.map((solve) => solve.totalDuration));
-  const moves = median(recent.map((solve) => compactMoves(solve.moves!).length));
-  const ranked = recent.flatMap((solve) => {
-    const target = createReviewTarget(solve)!;
-    const goals: { goal: SolveReviewGoal; score: number }[] = [];
-    if (recent.length >= 3 && solve.totalDuration >= Math.max(time * 1.2, time + 1000)) {
-      goals.push({ goal: { kind: "duration", baseline: solve.totalDuration,
-        reason: `用时高于近 ${recent.length} 把中位数 ${(time / 1000).toFixed(2)}s` }, score: solve.totalDuration / time });
+function longestPause(solve: AnalysisInput): number | null {
+  const value = solve.stepReview?.maxGap;
+  return value !== undefined && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/** 按本机日历取昨天，各维度取最差 10%（向上取整）；只使用已保存的可信实录。 */
+export function selectDailyReview(records: AnalysisInput[], now = Date.now()): DailyReview {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const entries = records.flatMap((solve) => {
+    if (solve.completedAt === undefined || !Number.isFinite(solve.completedAt)
+      || solve.completedAt < yesterday.getTime() || solve.completedAt >= today.getTime()) return [];
+    const target = createReviewTarget(solve);
+    return target ? [{ solve, target, pause: longestPause(solve) }] : [];
+  });
+  const count = Math.ceil(entries.length / 10);
+  const metrics = [
+    { kind: "duration", label: "复原用时最慢的后 10%", values: entries.map((entry) => ({ ...entry, value: entry.solve.totalDuration })) },
+    { kind: "moves", label: "步数最多的前 10%", values: entries.map((entry) => ({ ...entry, value: entry.target.moveCount })) },
+    { kind: "pause", label: "最长停顿前 10%", values: entries.filter((entry) => entry.pause !== null && entry.pause > 300)
+      .map((entry) => ({ ...entry, value: entry.pause! })) },
+  ] as const;
+  const selected = new Map<AnalysisInput, SolveReviewTarget>();
+  for (const metric of metrics) {
+    const ranked = [...metric.values].sort((a, b) => b.value - a.value || (b.solve.completedAt ?? 0) - (a.solve.completedAt ?? 0));
+    for (const entry of ranked.slice(0, count)) {
+      const value = metric.kind === "moves" ? `${entry.value} 步` : `${(entry.value / 1000).toFixed(2)}s`;
+      const reason = `${metric.label}（${value}）`;
+      const existing = selected.get(entry.solve);
+      if (existing) existing.goal.reason += ` · ${reason}`;
+      else selected.set(entry.solve, { ...entry.target, goal: { kind: metric.kind, baseline: entry.value, reason } });
     }
-    if (recent.length >= 3 && target.moveCount >= moves + 5) {
-      goals.push({ goal: { kind: "moves", baseline: target.moveCount,
-        reason: `总步数高于近 ${recent.length} 把中位数 ${moves} 步；不等同于废步` }, score: target.moveCount / moves });
-    }
-    for (const event of solve.caseEvents ?? []) {
-      if (event.recognitionPauseMs >= 1000 && (solve.caseEvents ?? []).filter((item) => item.caseId === event.caseId).length === 1) {
-        goals.push({ goal: caseGoal(event), score: event.recognitionPauseMs / 1000 });
-      }
-    }
-    const best = goals.sort((a, b) => b.score - a.score)[0];
-    return best ? [{ target: { ...target, goal: best.goal }, score: best.score }] : [];
-  }).sort((a, b) => b.score - a.score || (b.target.completedAt ?? 0) - (a.target.completedAt ?? 0));
+  }
   const unique = new Map<string, SolveReviewTarget>();
-  for (const { target } of ranked) {
+  for (const target of selected.values()) {
     const facelets = CubieCube.SOLVED.applyMoves(target.scramble.split(/\s+/).map(parseMove)).toFaceCube();
     if (facelets !== SOLVED_FACELET && !unique.has(facelets)) unique.set(facelets, target);
   }
-  return [...unique.values()].slice(0, 10);
+  return { date: yesterday.getTime(), sampleCount: entries.length, targets: [...unique.values()] };
 }
 
 /** 比较原题目标；换解法导致 CASE 消失时，不将其误报为零停顿。 */
@@ -100,6 +111,11 @@ export function compareReviewSolve(current: AnalysisInput): ReviewComparison {
     || !isScrambleStateVerified(target.scramble.split(/\s+/), scramble)) return unavailable("本次局面与原题不一致，不能比较");
   const { goal } = target;
   let value = goal.kind === "duration" ? current.totalDuration : compactMoves(current.moves).length;
+  if (goal.kind === "pause") {
+    const pause = longestPause(current);
+    if (pause === null) return unavailable("本次缺少完整停顿数据，不比较最长停顿", true);
+    value = pause;
+  }
   if (goal.kind === "case-pause") {
     const matches = (current.caseEvents ?? []).filter((event) => event.caseId === goal.caseId && event.stage === goal.stage);
     if (matches.length !== 1) return unavailable("本次未唯一命中原 CASE，不比较起手间隔", true);

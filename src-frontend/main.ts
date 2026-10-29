@@ -343,7 +343,7 @@ keyboardShortcutsController.init();
 settingsController.init();
 formulaLibrary.init();
 historyController.init();
-reviewController.render();
+reviewController.init();
 refreshTraining();
 void scrambleController.newScramble();
 if (state.recentSolves.length > 0) log(` 已加载 ${state.recentSolves.length} 把历史`);

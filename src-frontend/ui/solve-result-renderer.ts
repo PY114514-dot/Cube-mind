@@ -23,8 +23,9 @@ export function renderSolveSummary(
   history: AnalysisInput[],
   practiceCategory?: FormulaPracticeCategory,
 ): void {
+  if (practiceCategory && !canCompareFormulaPractice(current, previous)) previous = undefined;
   const view = buildSolveResultView(current, previous, history);
-  const metrics = practiceCategory ? buildPracticeMetrics(current, previous, practiceCategory) : view.metrics;
+  const metrics = practiceCategory ? [view.metrics[0], ...buildPracticeMetrics(current, previous, practiceCategory)] : view.metrics;
   const metricMarkup = metrics.map((metric) =>
     `<div><span>${metric.label}</span><strong>${metric.value}</strong><em>${metric.delta}</em></div>`
   ).join("");
@@ -50,7 +51,6 @@ function buildPracticeMetrics(
   previous: AnalysisInput | undefined,
   category: FormulaPracticeCategory,
 ): { label: string; value: string; delta: string }[] {
-  previous = canCompareFormulaPractice(current, previous) ? previous : undefined;
   const stageDuration = category === "F2L" ? current.f2lDuration : category === "OLL" ? current.ollDuration : current.pllDuration;
   const previousStageDuration = category === "F2L" ? previous?.f2lDuration : category === "OLL" ? previous?.ollDuration : previous?.pllDuration;
   return [

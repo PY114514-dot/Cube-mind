@@ -38,6 +38,7 @@
 .solve-replay-controls { display: grid; gap: 8px; }
 .solve-replay-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .solve-replay-toolbar button { min-width: 44px; min-height: 44px; margin: 0; padding: 7px 10px; }
+.solve-replay-toolbar select { width: auto; min-width: 80px; min-height: 44px; margin: 0; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--muted-surface); color: var(--ink); }
 .solve-replay-toolbar .practice-btn { width: auto; flex: 1; }
 .solve-replay-toolbar strong { flex: 1 0 100%; text-align: right; color: var(--ink); font-family: var(--mono); font-size: 12px; }
 .solve-replay-timing { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--warm-gray); }
