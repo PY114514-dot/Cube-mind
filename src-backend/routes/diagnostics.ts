@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { BlockPracticeMode } from "../../src-shared/analysis-types.ts";
 
 export const diagnosticsRouter = Router();
 
@@ -12,7 +13,7 @@ const MAX_MOVES = 400;
 const MAX_ANOMALIES = 20;
 
 type DiagnosticKind = "scramble" | "solve";
-type DiagnosticMode = "normal" | "formula" | "cross" | "f2l" | "cross-f2l";
+type DiagnosticMode = "normal" | "formula" | BlockPracticeMode;
 
 interface DiagnosticEvent {
   kind: DiagnosticKind;
@@ -36,7 +37,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isDiagnosticMode(value: unknown): value is DiagnosticMode {
-  return value === "normal" || value === "formula" || value === "cross" || value === "f2l" || value === "cross-f2l";
+  return value === "normal" || value === "formula" || value === "cross" || value === "f2l" || value === "cross-f2l" || value === "xcross";
 }
 
 function optionalText(value: unknown, maxLength: number): string | undefined {

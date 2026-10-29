@@ -65,6 +65,10 @@ function practiceMetric(label: string, value: number, previous: number | undefin
 }
 
 export function renderStepReview(elements: SolveResultRenderElements, solve: AnalysisInput, practiceCategory?: FormulaPracticeCategory): void {
+  if (solve.practiceMode) {
+    elements.agentOutput.innerHTML = '<p class="placeholder">本次为分块专项，动作和观察用时已单独保留。常规复原完成后再进行 AI 实战分析。</p>';
+    return;
+  }
   const review = solve.stepReview;
   if (!review) {
     elements.agentOutput.innerHTML = '<p class="placeholder">实体已确认复原；动作流不完整，本把仅保留成绩和 BLE 诊断，不生成复盘建议。</p>';

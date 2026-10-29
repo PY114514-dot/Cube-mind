@@ -131,7 +131,12 @@ const historyStore = HistoryStore.load((message) => {
 const state: AppState = createInitialState(historyStore.all);
 
 // ====== 十字训练（composition） ======
-setupCrossSolver(state, settingsController, escapeHtml);
+const crossSolverController = setupCrossSolver(state, settingsController, formulaLibrary, (scramble) => {
+  if (timer.getState().isRunning || state.solve.isFinalizing) return false;
+  closeResultModals();
+  scrambleController.prepareBlockScramble("xcross", scramble);
+  return true;
+});
 
 // ====== AI 分析 / 训练闭环（composition） ======
 els.btnCloseCfop.onclick = closeResultModals;
@@ -212,7 +217,7 @@ const scrambleController = createScrambleController(
     practice: {
       updateBanner: () => practiceController.updateBanner(),
     },
-    onNewScramble: () => phaseIndicatorController.reset(),
+    onNewScramble: () => { phaseIndicatorController.reset(); crossSolverController.invalidate(); },
     onReviewNext: () => reviewController.next(),
     onLeaveReview: () => reviewController.cancel(),
     escapeHtml,
@@ -272,7 +277,10 @@ const practiceEntryController = createPracticeEntryController(
     },
     scramble: {
       prepareBlockScramble: (mode) => scrambleController.prepareBlockScramble(mode),
+      endBlockPractice: () => scrambleController.endBlockPractice(),
     },
+    openPrediction: () => crossSolverController.open(),
+    isRunning: () => timer.getState().isRunning || state.solve.isFinalizing,
     log: (msg, type) => log(msg, type),
   },
 );

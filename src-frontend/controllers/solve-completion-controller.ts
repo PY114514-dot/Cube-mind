@@ -87,9 +87,12 @@ function isScoreEligible(solve: AnalysisInput): boolean {
 function showCompletedAnalysis(
   els: SolveCompletionElements, state: AppState, deps: SolveCompletionDependencies,
   analysis: CompletedSolveAnalysis, physicalState: PhysicalCubeState,
+  record: AnalysisInput,
 ): void {
   const { trust, cfopResult, f2lSlotAnalysis } = analysis;
-  if (state.review && trust.state !== "analysis-ready") {
+  if (record.practiceMode) {
+    deps.log(record.practiceOutcome === "success" ? "专项目标已通过动作回放核验" : "专项目标未通过核验", record.practiceOutcome === "success" ? "info" : "error");
+  } else if (state.review && trust.state !== "analysis-ready") {
     deps.log("本次原题复习未通过完整动作核验，仅保留记录，不比较改善。", "error");
   } else if (trust.state === "score-only") {
     deps.log(physicalState === "unavailable"
@@ -104,7 +107,9 @@ function showCompletedAnalysis(
   const isFocusedFormulaPractice = state.practice.session !== null;
   if (detailTitle) detailTitle.hidden = isFocusedFormulaPractice;
   els.cfopOutput.hidden = isFocusedFormulaPractice;
-  els.cfopOutput.textContent = cfopResult && f2lSlotAnalysis
+  els.cfopOutput.textContent = record.practiceMode
+    ? `${record.practiceOutcome === "success" ? "专项目标已完成" : "专项目标未完成或动作流异常"}。专项只检查所选目标，无需整颗复原。\n原始动作与观察用时已保留，可在历史的对应专项分组查看解法。`
+    : cfopResult && f2lSlotAnalysis
     ? `${formatCfop(cfopResult, f2lSlotAnalysis.targetFace)}\n\n${formatF2lSlotAnalysis(f2lSlotAnalysis)}`
     : state.review ? "本次原题复习未通过完整动作核验，请重练本题。\n不计入常规 PB、AO 或 AI 实战基准。"
       : getUnavailableCfopMessage(trust.state, physicalState);
@@ -205,11 +210,11 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
       externalAnomalies: state.solve.hasPermanentMoveGap ? ["missing-event"] : [],
     });
     const { validation, trust: solveTrust } = completedAnalysis;
-    showCompletedAnalysis(els, state, deps, completedAnalysis, physicalState);
 
     const previousSolve = state.recentSolves[state.recentSolves.length - 1];
     const completedRecord = createRecord(els, state, deps, completedAnalysis, physicalState, scrambleMoves);
     const { input, formulaPracticeSucceeded, blockPracticeSucceeded } = completedRecord;
+    showCompletedAnalysis(els, state, deps, completedAnalysis, physicalState, input);
     if (reviewSession) {
       input.practiceKind = "review";
       input.review = reviewSession.queue[reviewSession.index];
@@ -228,7 +233,8 @@ export function createSolveCompletionController(els: SolveCompletionElements, st
     const resultElements = { summary: els.cfopSummary, nextAction: els.resultNextAction, agentOutput: els.agentOutput };
     renderSolveSummary(resultElements, input, previousSolve, state.recentSolves, formulaPractice?.category);
     renderStepReview(resultElements, input, formulaPractice?.category);
-    renderSolveTimeline(els.solveTimeline, input, { focusStage: formulaPractice?.category });
+    els.solveTimeline.hidden = Boolean(input.practiceMode);
+    if (!input.practiceMode) renderSolveTimeline(els.solveTimeline, input, { focusStage: formulaPractice?.category });
     finishRecordedSolve(state, deps, input, completionPlan);
     if (reviewSession) deps.onReviewComplete?.(input);
   }

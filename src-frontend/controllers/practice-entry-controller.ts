@@ -11,6 +11,7 @@ import type { Formula, FormulaCategory } from "../formula/types.ts";
 import { isFormulaDevicePracticeSafe } from "../formula/setup-validation.ts";
 import { selectPracticeFormula, type PracticeRecord } from "../core/practice-stats.ts";
 import type { AppState, FormulaPracticeOrder } from "../core/app-state.ts";
+import type { BlockPracticeMode } from "../../src-shared/analysis-types.ts";
 
 /** 练习入口所需 DOM 元素 */
 export interface PracticeEntryElements {
@@ -47,8 +48,11 @@ export interface PracticeEntryDependencies {
     confirmPractice: () => void;
   };
   scramble: {
-    prepareBlockScramble: (mode: "cross" | "f2l" | "cross-f2l") => void;
+    prepareBlockScramble: (mode: BlockPracticeMode) => void;
+    endBlockPractice: () => void;
   };
+  openPrediction: () => void;
+  isRunning: () => boolean;
   log: (msg: string, type?: "info" | "move" | "error") => void;
 }
 
@@ -133,6 +137,7 @@ export function createPracticeEntryController(
   }
 
   function endPracticeSession(): void {
+    if (state.practice.blockMode) { scramble.endBlockPractice(); return; }
     if (!state.practice.session) return;
     log(`已终止专项练习：${state.practice.session.formula.id}`);
     practice.finish();
@@ -140,6 +145,7 @@ export function createPracticeEntryController(
 
   function init(): void {
     els.btnOpenPracticeMode.onclick = () => {
+      if (deps.isRunning()) { log("请先完成或停止当前计时，再选择专项", "error"); return; }
       els.practiceModeModal.classList.add("open");
     };
     els.btnClosePracticeMode.onclick = () => els.practiceModeModal.classList.remove("open");
@@ -149,12 +155,17 @@ export function createPracticeEntryController(
     });
     els.practiceModeModal.querySelectorAll<HTMLButtonElement>("[data-block-practice-mode]").forEach((button) => {
       button.onclick = () => {
-        const mode = button.dataset.blockPracticeMode as "cross" | "f2l" | "cross-f2l" | undefined;
+        const mode = button.dataset.blockPracticeMode as BlockPracticeMode | undefined;
         if (!mode) return;
+        if (deps.isRunning()) { log("请先完成或停止当前计时", "error"); return; }
         els.practiceModeModal.classList.remove("open");
         scramble.prepareBlockScramble(mode);
       };
     });
+    els.practiceModeModal.querySelector<HTMLButtonElement>("[data-open-prediction]")!.onclick = () => {
+      els.practiceModeModal.classList.remove("open");
+      deps.openPrediction();
+    };
     els.btnCancelPractice.onclick = cancelPracticeSelection;
     els.btnClosePractice.onclick = cancelPracticeSelection;
     els.btnStartPractice.onclick = startSelectedPractice;

@@ -100,13 +100,12 @@
         </div>
         <div class="controls scramble-tools">
           <span class="cross-target-fixed">白色十字 · 白面朝下</span>
-          <button id="btn-solve-cross" class="ghost">求解十字</button>
-          <button id="btn-solve-xcross" class="ghost">求解 XCross</button>
+          <button id="btn-solve-cross" class="ghost">十字演示</button>
+          <button id="btn-predict-cross" class="ghost">预判练习</button>
+          <button id="btn-solve-xcross" class="ghost">XC 解法</button>
         </div>
       </div>
       <div class="scramble" id="scramble-text">点击生成</div>
-      <div class="cross-solution" id="cross-solution" hidden></div>
-      <div class="xcross-solution" id="xcross-solution" hidden></div>
     </div>
 
     <div class="timer-section" id="timer-stage">
@@ -291,6 +290,8 @@
             <button data-block-practice-mode="cross"><strong>Cross</strong><span>白面朝下真实验证</span></button>
             <button data-block-practice-mode="f2l"><strong>F2L</strong><span>保留白色十字</span></button>
             <button data-block-practice-mode="cross-f2l"><strong>Cross + F2L</strong><span>完整打乱分块</span></button>
+            <button data-block-practice-mode="xcross"><strong>XC 专项</strong><span>十字与第一对完成自动停表</span></button>
+            <button data-open-prediction><strong>观察预判</strong><span>十字规划与第一对追踪 · 无需设备</span></button>
           </div>
           <p class="modal-hint practice-hint">分块练习由完整打乱进入，完成后自动校验对应阶段。</p>
         </section>
@@ -401,5 +402,14 @@
     });
   </script>
   <script defer src="bundle.js"></script>
+  <dialog id="cross-coach-dialog" class="cross-coach-dialog" aria-labelledby="cross-coach-title">
+    <header class="cross-coach-header"><div><h2 id="cross-coach-title" data-coach-title>十字与第一对预判</h2><p>白底蓝前 · U 上 / D 下 / F 前 / B 后 / R 右 / L 左</p></div><button type="button" class="ghost" data-coach-close aria-label="关闭观察训练">关闭</button></header>
+    <div class="cross-coach-scroll">
+      <nav class="cross-coach-tabs" aria-label="观察训练内容"><button type="button" class="ghost" data-coach-mode="prediction">预判练习</button><button type="button" class="ghost" data-coach-mode="cross">十字演示</button><button type="button" class="ghost" data-coach-mode="xcross">XC 解法</button></nav>
+      <p class="coach-caption" data-coach-origin></p>
+      <div data-coach-content></div>
+    </div>
+    <footer class="cross-coach-footer"><span data-coach-stats>先观察并作答，再用 3D 检查思路</span><button type="button" class="ghost" data-coach-next>下一题</button></footer>
+  </dialog>
 </body>
 </html>

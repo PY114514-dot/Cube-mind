@@ -8,6 +8,7 @@ import type { Formula } from "../formula/types.ts";
 import type { AppState, FormulaPracticeOrder, FormulaPracticeSession } from "./app-state.ts";
 import { selectPracticeFormula, type PracticeRecord } from "./practice-stats.ts";
 import { compareFormulaPractice } from "./practice-effect.ts";
+import { BLOCK_PRACTICE_LABELS } from "./block-practice.ts";
 
 export interface PracticeControllerElements {
   practiceBanner: HTMLElement;
@@ -82,6 +83,7 @@ export function createPracticeController(
 }
 
 function start(els: PracticeControllerElements, state: AppState, cb: PracticeControllerCallbacks, formula: Formula, target: number, candidates: Formula[], order: FormulaPracticeOrder): void {
+  state.practice.blockMode = null;
   state.practice.session = {
     formula, candidates, order, target,
     completed: 0, startedAt: Date.now(),
@@ -97,6 +99,12 @@ function start(els: PracticeControllerElements, state: AppState, cb: PracticeCon
 }
 
 function updateBanner(els: PracticeControllerElements, state: AppState): void {
+  if (state.practice.blockMode) {
+    els.practiceBanner.hidden = false;
+    els.practiceInfo.textContent = `${BLOCK_PRACTICE_LABELS[state.practice.blockMode]} 专项 · 完成后点「新打乱」继续，或点「终止练习」退出`;
+    els.btnRetryPractice.hidden = true;
+    return;
+  }
   if (!state.practice.session) {
     els.practiceBanner.hidden = true;
     return;

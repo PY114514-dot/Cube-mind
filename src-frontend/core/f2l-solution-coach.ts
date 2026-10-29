@@ -44,6 +44,19 @@ function findCandidate(start: CubieCube, required: Slot[], algorithms: CaseAlgor
   });
 }
 
+/** 十字后的第一对推荐：复用公式候选，保留所有已完成槽位。输入为 D 底层坐标。 */
+export function findFirstPairSolution(start: CubieCube, algorithms: CaseAlgorithmReference[]): { slot: Slot; algorithm: CaseAlgorithmReference } | null {
+  if (!isCrossSolved(start, "D")) return null;
+  const preserved = solvedSlots(start);
+  for (const algorithm of candidateAlgorithms(algorithms)) {
+    const end = start.applyMoves(algorithm.moves.map(parseMove));
+    const solved = solvedSlots(end);
+    const slot = solved.find((item) => !preserved.includes(item));
+    if (slot && isCrossSolved(end, "D") && preserved.every((item) => solved.includes(item))) return { slot, algorithm };
+  }
+  return null;
+}
+
 function buildPairReview(
   solve: AnalysisInput, slots: NonNullable<AnalysisInput["f2lSlots"]>, states: CubieCube[],
   targetFace: "U" | "D", algorithms: CaseAlgorithmReference[],

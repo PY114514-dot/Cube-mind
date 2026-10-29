@@ -9,6 +9,7 @@ import { renderReviewComparison } from "./solve-review-markup.ts";
 import { F2lSolutionPanel } from "./f2l-solution-panel.ts";
 import type { F2lSolutionReview } from "../../src-shared/analysis-types.ts";
 import { formatInspectionDuration } from "../core/solve-result-view.ts";
+import { buildSolveResultFeedback } from "../core/solve-result-feedback.ts";
 
 export interface HistoryDetailElements {
   detail: HTMLDivElement;
@@ -35,6 +36,11 @@ export class HistoryDetailController {
       : "点击\"查看解法\"显示本次还原步骤。";
     const showReplay = Boolean(showSolution && solve.scramble && solve.moves?.length);
     const quality = presentSolveQuality(solve.qualityStatus, solve.qualityAnomalies);
+    if (solve.practiceMode) {
+      const feedback = buildSolveResultFeedback(solve, []);
+      quality.label = feedback.label;
+      quality.description = feedback.detail;
+    }
     if (solve.practiceKind === "review") quality.description = "原题复习单独保存，不计入常规 PB、AO 或 AI 实战基准。";
     this.elements.detail.innerHTML = `
       <div class="history-detail-grid">
@@ -42,7 +48,7 @@ export class HistoryDetailController {
         <div><span>观察用时</span><strong>${formatInspectionDuration(solve.inspectionDuration)}</strong></div>
         <div><span>TPS</span><strong>${solve.tps?.toFixed(2) ?? "—"}</strong></div>
       </div>
-      ${showReplay ? "" : '<div data-history-timeline></div>'}
+      ${showReplay || solve.practiceMode ? "" : '<div data-history-timeline></div>'}
       ${renderReviewComparison(solve, escapeHtml)}
       <div data-f2l-solutions></div>
       <div class="history-sequence"><span>数据可信度</span><strong>${escapeHtml(quality.label)}</strong><code>${escapeHtml(quality.description)}</code></div>
@@ -58,7 +64,9 @@ export class HistoryDetailController {
     }
     if (timeline) renderSolveTimeline(timeline, solve);
     const replayRoot = this.elements.detail.querySelector<HTMLElement>("[data-history-replay]");
-    if (replayRoot && solve.moves) this.replayPlayer = new SolveReplayPlayer(replayRoot, solve);
+    if (replayRoot && solve.moves) this.replayPlayer = new SolveReplayPlayer(replayRoot, solve, {
+      segment: solve.practiceMode ? { startMoveIndex: 0, endMoveIndex: solve.moves.length } : undefined,
+    });
     this.elements.retryButton.disabled = !canReviewSolve(solve);
     this.elements.retryButton.textContent = "重练原题";
     this.elements.solutionButton.disabled = !solve.moves || solve.moves.length === 0;

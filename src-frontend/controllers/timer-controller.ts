@@ -38,6 +38,7 @@ export interface TimerControllerDependencies {
   };
   log: (msg: string, type?: "info" | "move" | "error") => void;
   onReviewReset?: () => void;
+  onPracticeReset?: () => void;
 }
 
 export interface TimerController {
@@ -67,7 +68,6 @@ async function finalizeSolve(
     timerDisplay.updateDisplay();
     log("Timer stopped");
     await solveCompletion.onSolveComplete(signal);
-    if (!signal.aborted && timer.getState() === timerState) state.practice.blockMode = null;
   } catch (error) {
     if (!signal.aborted && timer.getState() === timerState) {
       console.error("[timer-controller] 成绩核验失败:", error);
@@ -82,6 +82,7 @@ function resetTimerSession(els: TimerControllerElements, state: AppState, deps: 
   timerDisplay.endInspection();
   timerDisplay.stopDisplay();
   state.practice.blockMode = null;
+  deps.onPracticeReset?.();
   state.practice.awaitingNextScramble = false;
   state.practice.postSolveMoves = [];
   timerDisplay.updateDisplay();

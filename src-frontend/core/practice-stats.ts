@@ -1,7 +1,7 @@
 import { formatWcaAverage } from "./wca-average.ts";
-import type { AnalysisInput, CaseAlgorithmReference } from "../../src-shared/analysis-types.ts";
+import type { AnalysisInput, BlockPracticeMode, CaseAlgorithmReference } from "../../src-shared/analysis-types.ts";
 
-export type PracticeKind = "formula" | "cross" | "f2l" | "cross-f2l";
+export type PracticeKind = "formula" | BlockPracticeMode;
 
 export interface PracticeRecord {
   practiceKind: PracticeKind;

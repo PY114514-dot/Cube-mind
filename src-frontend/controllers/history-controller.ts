@@ -32,6 +32,7 @@ const SYSTEM_HISTORY_GROUPS = [
   { id: "practice-cross", name: "Cross 练习" },
   { id: "practice-f2l", name: "F2L 练习" },
   { id: "practice-cross-f2l", name: "Cross + F2L 练习" },
+  { id: "practice-xcross", name: "XC 专项" },
 ] as const;
 
 export const SYSTEM_HISTORY_GROUP_IDS = new Set<string>(SYSTEM_HISTORY_GROUPS.map((g) => g.id));
@@ -256,6 +257,7 @@ export class HistoryController {
     if (this.selectedHistoryGroup === "practice-cross") return solve.practiceKind === "cross";
     if (this.selectedHistoryGroup === "practice-f2l") return solve.practiceKind === "f2l";
     if (this.selectedHistoryGroup === "practice-cross-f2l") return solve.practiceKind === "cross-f2l";
+    if (this.selectedHistoryGroup === "practice-xcross") return solve.practiceKind === "xcross";
     return solve.groupId === this.selectedHistoryGroup;
   }
 
@@ -265,6 +267,7 @@ export class HistoryController {
     if (solve.practiceKind === "cross") return "Cross 练习";
     if (solve.practiceKind === "f2l") return "F2L 练习";
     if (solve.practiceKind === "cross-f2l") return "Cross+F2L";
+    if (solve.practiceKind === "xcross") return "XC 专项";
     return "";
   }
 

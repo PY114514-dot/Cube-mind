@@ -1,5 +1,7 @@
 import type { TrainingProfileEntry } from "./training-plan-types.ts";
 
+export type BlockPracticeMode = "cross" | "f2l" | "cross-f2l" | "xcross";
+
 export interface AnalysisInput {
   /** 数据 schema 版本号，用于 localStorage 迁移；缺失视为 v0 */
   dataVersion?: number;
@@ -14,8 +16,8 @@ export interface AnalysisInput {
   deviceName?: string;
   deviceId?: string;
   groupId?: string;
-  practiceMode?: "cross" | "f2l" | "cross-f2l";
-  practiceKind?: "formula" | "cross" | "f2l" | "cross-f2l" | "review";
+  practiceMode?: BlockPracticeMode;
+  practiceKind?: "formula" | BlockPracticeMode | "review";
   /** 原题与复习目标快照，原成绩删除后仍可按相同口径比较。 */
   review?: SolveReviewTarget;
   practiceFormulaId?: string;

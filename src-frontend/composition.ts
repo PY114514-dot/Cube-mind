@@ -8,8 +8,9 @@
 
 import { els, escapeHtml } from "./dom-elements.ts";
 import { buildF2lSolutions } from "./core/f2l-solution-coach.ts";
+import { compactMoves } from "./core/practice-transition.ts";
 import { F2lSolutionPanel } from "./ui/f2l-solution-panel.ts";
-import { createCrossSolverController } from "./controllers/cross-solver-controller.ts";
+import { CrossSolverController } from "./controllers/cross-solver-controller.ts";
 import { createAnalysisRenderer } from "./ui/analysis-renderer.ts";
 import { createTrainingController } from "./controllers/training-controller.ts";
 import { createPracticeController } from "./core/practice-controller.ts";
@@ -46,8 +47,8 @@ import type { createSolveReviewController } from "./controllers/solve-review-con
 type LogFn = (msg: string, type?: "info" | "move" | "error") => void;
 type EscapeHtml = (s: string) => string;
 
-/** 十字训练设置折叠与求解面板（控制器仅内部使用，不返回）。 */
-export function setupCrossSolver(state: AppState, settingsController: SettingsController, escapeHtml: EscapeHtml): void {
+/** 十字训练复用绝对打乱；过渡动作不能被当作从还原态出发的题目。 */
+export function setupCrossSolver(state: AppState, settings: SettingsController, formulaLibrary: FormulaLibraryController, startXCross: (scramble: string) => boolean) {
   els.btnToggleCrossSettings.onclick = () => {
     const isExpanded = els.btnToggleCrossSettings.getAttribute("aria-expanded") === "true";
     els.btnToggleCrossSettings.setAttribute("aria-expanded", String(!isExpanded));
@@ -59,20 +60,25 @@ export function setupCrossSolver(state: AppState, settingsController: SettingsCo
     els.btnCrossHelp.setAttribute("aria-expanded", String(!isExpanded));
     els.crossHelpText.hidden = isExpanded;
   };
-  const crossSolverController = createCrossSolverController(
+  const crossSolverController = new CrossSolverController(
     {
       btnSolveCross: els.btnSolveCross,
       btnSolveXCross: els.btnSolveXCross,
-      crossSolution: els.crossSolution,
-      xcrossSolution: els.xcrossSolution,
+      btnPredictCross: els.btnPredictCross,
+      crossCoachDialog: els.crossCoachDialog,
     },
     {
-      getCurrentScramble: () => state.scramble.currentScramble,
-      getCrossMaxSteps: () => settingsController.getSettings().crossMaxSteps,
+      getCurrentScramble: () => state.scramble.currentScramble ? compactMoves([
+        ...state.scramble.startingMoves, ...state.scramble.currentScramble.split(/\s+/),
+      ]).join(" ") : null,
+      getF2lAlgorithms: () => formulaLibrary.getF2lAlgorithms(),
+      getCrossMaxSteps: () => settings.getSettings().crossMaxSteps,
+      startXCross,
       escapeHtml,
     },
   );
   crossSolverController.init();
+  return crossSolverController;
 }
 
 export interface AnalysisFlowDeps {
@@ -279,6 +285,7 @@ function setupTimerRuntime(deps: SolvePipelineDeps, onSolveComplete: (signal: Ab
         reset: () => phaseIndicatorController.reset(),
       },
       onReviewReset: () => deps.reviewController.retry(),
+      onPracticeReset: () => deps.practiceController.updateBanner(),
       log,
     },
   );

@@ -15,12 +15,12 @@ import { invertMove } from "../core/scramble-tracker.ts";
 import { recognizeF2lCase, recognizeFormulaPracticeCase } from "../core/f2l-case-recognizer.ts";
 import { getCfopPhase, type CfopPhase } from "../core/cstimer-cfop.ts";
 import { canBeginInspection } from "../core/scramble-ready-gate.ts";
+import { isBlockPracticeComplete } from "../core/block-practice.ts";
 
 /** Move 编排用到的 3D 可视化操作 */
 export interface MoveVisualizerDeps {
   applyMove(move: string): void;
   getFacelets(): string;
-  isCrossSolved(targetFace?: string): boolean;
   isSolved(): boolean;
 }
 
@@ -119,12 +119,11 @@ export function createMoveController(
     log(`#${timer.getState().moves.length + 1} ${move.move}`, "move");
 
     const blockPhase = getCfopPhase(cubeVisualizer.getFacelets());
-    const shouldStopCross = state.practice.blockMode === "cross" && cubeVisualizer.isCrossSolved("U");
-    const shouldStopBlock = (state.practice.blockMode === "f2l" || state.practice.blockMode === "cross-f2l") && timer.getState().moves.length > 0 && blockPhase === "f2l";
+    const shouldStopBlock = state.practice.blockMode !== null && isBlockPracticeComplete(state.practice.blockMode, cubeVisualizer.getFacelets());
     const shouldStopFormulaF2l = state.practice.session?.formula.category === "F2L" && timer.getState().moves.length > 0 && blockPhase === "f2l";
     const shouldStopFormulaOll = state.practice.session?.formula.category === "OLL" && timer.getState().moves.length > 0 && blockPhase === "oll";
-    if (timer.getState().isRunning && timer.getState().moves.length > 0 && (cubeVisualizer.isSolved() || shouldStopBlock || shouldStopCross || shouldStopFormulaF2l || shouldStopFormulaOll)) {
-      if (shouldStopBlock || shouldStopCross) state.practice.blockCompleted = true;
+    if (timer.getState().isRunning && timer.getState().moves.length > 0 && (cubeVisualizer.isSolved() || shouldStopBlock || shouldStopFormulaF2l || shouldStopFormulaOll)) {
+      if (shouldStopBlock) state.practice.blockCompleted = true;
       phaseIndicator.complete(blockPhase);
       void timerController.stopSolveTimerAndAnalyze();
     } else if (timer.getState().isRunning) {

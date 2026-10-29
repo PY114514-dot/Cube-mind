@@ -35,12 +35,12 @@ function getFormulaAttemptAction(input: SolveCompletionPlanInput): FormulaAttemp
 }
 
 function getStatus(input: SolveCompletionPlanInput): Pick<SolveCompletionPlan, "statusMessage" | "statusLevel"> {
+  if (input.formulaPracticeSucceeded || input.blockPracticeSucceeded) {
+    return { statusMessage: "状态回放确认专项目标完成；已仅计入专项统计", statusLevel: "info" };
+  }
   if (input.analysisEligible) return { statusMessage: "状态回放确认已还原；成绩可用于 AO 与 AI", statusLevel: "info" };
   if (input.physicalState === "confirmed-solved") {
     return { statusMessage: "实体状态确认已复原；成绩已计入 AO，动作流仅保留诊断用途", statusLevel: "info" };
-  }
-  if (input.formulaPracticeSucceeded || input.blockPracticeSucceeded) {
-    return { statusMessage: "状态回放确认专项目标完成；已仅计入专项统计", statusLevel: "info" };
   }
   return { statusMessage: `成绩已保存但未通过状态校验：${input.validationAnomalies.join("、")}`, statusLevel: "error" };
 }

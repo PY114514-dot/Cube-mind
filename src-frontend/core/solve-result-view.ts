@@ -6,6 +6,7 @@ import { buildSolveResultFeedback } from "./solve-result-feedback.ts";
 import { resolvePersistedSolveTrust } from "./solve-validation.ts";
 import { formatWcaSolveTime } from "./wca-average.ts";
 import { formatMovesForWhiteBottom } from "./solve-notation.ts";
+import { BLOCK_PRACTICE_LABELS } from "./block-practice.ts";
 
 export interface SolveResultMetric {
   label: string;
@@ -62,7 +63,7 @@ export function buildStepReviewPresentation(review: NonNullable<AnalysisInput["s
 }
 
 function buildMetrics(current: AnalysisInput, previous: AnalysisInput | undefined): SolveResultMetric[] {
-  if (current.practiceKind === "review" || previous?.practiceKind === "review") previous = undefined;
+  if (current.practiceKind === "review" || previous?.practiceKind === "review" || current.practiceKind !== previous?.practiceKind) previous = undefined;
   return [
     metric("观察用时", current.inspectionDuration ?? 0, current.inspectionDuration === undefined ? undefined : previous?.inspectionDuration,
       "s", formatInspectionDuration(current.inspectionDuration)),
@@ -98,9 +99,12 @@ function buildAction(current: AnalysisInput, scoreEligible: boolean, analysisEli
 function getPracticeAction(current: AnalysisInput): SolveResultAction | undefined {
   if (!current.practiceKind || current.practiceKind === "review") return undefined;
   const success = current.practiceOutcome === "success";
-  const detail = current.practiceKind === "formula"
-    ? `识别 ${formatSeconds(current.recognitionDuration ?? 0)} · 执行 ${formatSeconds(current.executionDuration ?? 0)}`
-    : `本次用时 ${formatSeconds(current.totalDuration)}`;
+  if (current.practiceKind !== "formula") return {
+    kind: "practice", label: `${BLOCK_PRACTICE_LABELS[current.practiceKind]} 专项`,
+    title: success ? "专项目标完成" : "专项目标未完成",
+    detail: `本次 ${formatSeconds(current.totalDuration)} · ${current.moveCount ?? current.moves?.length ?? 0} 步。点击「新打乱」继续同类训练，或「终止练习」返回常规复原。`,
+  };
+  const detail = `识别 ${formatSeconds(current.recognitionDuration ?? 0)} · 执行 ${formatSeconds(current.executionDuration ?? 0)}`;
   return {
     kind: "practice",
     label: `专项练习${current.practiceFormulaId ? ` · ${current.practiceFormulaId}` : ""}`,

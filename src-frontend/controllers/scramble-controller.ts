@@ -11,6 +11,8 @@ import { sendDiagnosticEvent } from "../core/diagnostics-client.ts";
 import { SOLVED_FACELET } from "../utils/mathlib.ts";
 import type { AppState } from "../core/app-state.ts";
 import type { Timer } from "../core/timer.ts";
+import type { BlockPracticeMode } from "../../src-shared/analysis-types.ts";
+import { BLOCK_PRACTICE_LABELS } from "../core/block-practice.ts";
 
 /** 打乱控制器所需 DOM 元素 */
 export interface ScrambleControllerElements {
@@ -52,7 +54,8 @@ export interface ScrambleControllerDependencies {
 export interface ScrambleController {
   init(): void;
   newScramble(): Promise<void>;
-  prepareBlockScramble(mode: "cross" | "f2l" | "cross-f2l"): void;
+  prepareBlockScramble(mode: BlockPracticeMode, targetScramble?: string): void;
+  endBlockPractice(): void;
   preparePracticeScramble(): void;
   renderProgress(): void;
   updateOnMove(move: string): void;
@@ -84,7 +87,12 @@ export function createScrambleController(
   };
   return {
     init: () => init(context), newScramble: () => newScramble(context),
-    prepareBlockScramble: (mode) => prepareBlockScramble(context, mode),
+    prepareBlockScramble: (mode, target) => prepareBlockScramble(context, mode, target),
+    endBlockPractice: () => {
+      state.practice.blockMode = null;
+      deps.practice.updateBanner();
+      void newScramble(context);
+    },
     preparePracticeScramble: () => preparePracticeScramble(context),
     renderProgress: () => renderProgress(context), updateOnMove: (move) => updateOnMove(context, move),
     verifyCompleted: () => verifyCompleted(context),
@@ -195,6 +203,10 @@ async function newScramble(context: ScrambleContext): Promise<void> {
     preparePracticeScramble(context);
     return;
   }
+  if (state.practice.blockMode) {
+    prepareBlockScramble(context, state.practice.blockMode);
+    return;
+  }
   const generationId = ++state.scramble.generationId;
   state.scramble.startingMoves = getCurrentTransitionMoves(context);
   state.scramble.performedMoves = [];
@@ -220,15 +232,16 @@ async function newScramble(context: ScrambleContext): Promise<void> {
   }
 }
 
-function prepareBlockScramble(context: ScrambleContext, mode: "cross" | "f2l" | "cross-f2l"): void {
+function prepareBlockScramble(context: ScrambleContext, mode: BlockPracticeMode, targetScramble?: string): void {
   context.deps.onLeaveReview?.();
   cancelGeneration(context);
   const { els, state } = context;
   const { timer, timerDisplay, onNewScramble, log } = context.deps;
   context.physical.cancel();
+  state.practice.session = null;
   state.practice.blockMode = mode;
   state.practice.blockCompleted = false;
-  const baseScramble = scramble333(20);
+  const baseScramble = targetScramble ?? scramble333(20);
   const setupMoves = mode === "f2l" ? solveCross(baseScramble, "U") : [];
   state.scramble.currentScramble = getTransitionScramble(context, [...baseScramble.split(" "), ...setupMoves]);
   state.scramble.progress = createScrambleProgress(state.scramble.currentScramble);
@@ -244,7 +257,8 @@ function prepareBlockScramble(context: ScrambleContext, mode: "cross" | "f2l" | 
   els.btnStop.disabled = true;
   renderProgress(context);
   void sendDiagnosticEvent({ kind: "scramble", occurredAt: Date.now(), scramble: state.scramble.currentScramble, mode });
-  log(mode === "cross" ? "已生成白面朝下 Cross 专项练习" : mode === "f2l" ? "已生成白色十字完成的 F2L 练习" : "已生成 Cross + F2L 练习");
+  context.deps.practice.updateBanner();
+  log(`已生成白底 ${BLOCK_PRACTICE_LABELS[mode]} 专项，完成目标自动停表`);
   onNewScramble?.();
 }
 

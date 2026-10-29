@@ -4,6 +4,7 @@ import type { Formula } from "../formula/types.ts";
 import type { InspectionPenalty } from "./inspection-rules.ts";
 import { createScrambleProgress, type ScrambleProgress } from "./scramble-tracker.ts";
 import type { SolveReviewSession } from "./solve-review-session.ts";
+import type { BlockPracticeMode } from "../../src-shared/analysis-types.ts";
 
 // ====== 公式练习子类型 ======
 
@@ -48,7 +49,7 @@ export interface SolveState {
 
 /** 练习模式（块练习 + 公式练习 + 过渡状态） */
 export interface PracticeState {
-  blockMode: "cross" | "f2l" | "cross-f2l" | null;
+  blockMode: BlockPracticeMode | null;
   blockCompleted: boolean;
   pendingFormula: Formula | null;
   pendingCandidates: Formula[];

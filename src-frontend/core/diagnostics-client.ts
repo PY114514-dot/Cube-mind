@@ -1,4 +1,6 @@
-export type DiagnosticMode = "normal" | "formula" | "cross" | "f2l" | "cross-f2l";
+import type { BlockPracticeMode } from "../../src-shared/analysis-types.ts";
+
+export type DiagnosticMode = "normal" | "formula" | BlockPracticeMode;
 
 export interface DiagnosticEvent {
   kind: "scramble" | "solve";

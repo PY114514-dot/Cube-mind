@@ -9,6 +9,11 @@ const SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
 const DEMO_STEP_MS = 700;
 const DEMO_TURN_MS = 450;
 
+export interface ReplaySequence {
+  scramble: string;
+  moves: string[];
+}
+
 export interface SolveReplayPlayerOptions {
   title?: string;
   emptyMessage?: string;
@@ -51,13 +56,13 @@ export class SolveReplayPlayer {
   private readonly startIndex: number;
   private readonly endIndex: number;
 
-  constructor(root: HTMLElement, solve: AnalysisInput, options: SolveReplayPlayerOptions = {}) {
+  constructor(root: HTMLElement, solve: AnalysisInput | ReplaySequence, options: SolveReplayPlayerOptions = {}) {
     this.root = root;
     this.scrambleMoves = splitMoves(solve.scramble ?? "");
     this.solutionMoves = (solve.moves ?? []).slice();
     const view = options.view ?? (getSolveTargetFace(solve.scramble, solve.moves) === "U" ? "yellow-top" : "white-top");
     this.notationMoves = view === "white-top" ? this.solutionMoves : formatMovesForWhiteBottom(this.solutionMoves, "U");
-    this.timestamps = buildReplayTimestamps(this.solutionMoves.length, solve.moveGaps);
+    this.timestamps = buildReplayTimestamps(this.solutionMoves.length, "moveGaps" in solve ? solve.moveGaps : undefined);
     this.onPlay = options.onPlay;
     this.startIndex = options.segment?.startMoveIndex ?? 0;
     this.endIndex = options.segment?.endMoveIndex ?? this.solutionMoves.length;
@@ -82,7 +87,7 @@ export class SolveReplayPlayer {
           <input data-replay-progress type="range" min="${this.startIndex}" max="${this.endIndex}" value="${this.startIndex}" step="1" aria-label="按步数跳转解法进度">
           <div class="solve-replay-timing"><button type="button" class="ghost" data-replay-action="mode" aria-label="切换慢速演示或实录节奏" ${this.timestamps ? "" : "disabled"}></button><span data-replay-time></span></div>
         </div>
-        ${options.segment ? "" : '<div data-replay-timeline></div>'}
+        ${options.segment || !("totalDuration" in solve) ? "" : '<div data-replay-timeline></div>'}
       </section>`;
     const cubeRoot = this.root.querySelector<HTMLElement>("[data-replay-cube]");
     const range = this.root.querySelector<HTMLInputElement>("[data-replay-progress]");
@@ -107,7 +112,7 @@ export class SolveReplayPlayer {
     const titleLabel = this.root.querySelector<HTMLElement>("[data-replay-title]");
     if (titleLabel) titleLabel.textContent = title;
     const timeline = this.root.querySelector<HTMLElement>("[data-replay-timeline]");
-    if (timeline) {
+    if (timeline && "totalDuration" in solve) {
       renderSolveTimeline(timeline, solve, { onSeek: (index) => {
         this.seek(index);
         cubeRoot.scrollIntoView({ block: "start" });

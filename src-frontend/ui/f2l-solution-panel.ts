@@ -7,6 +7,10 @@ type EscapeHtml = (value: string) => string;
 
 export function getF2lReplayYaw(pair: Pick<F2lSolutionReview, "slots" | "targetFace">): number {
   const slot = formatF2lSlotForWhiteBottom(pair.slots[0], pair.targetFace);
+  return getSlotReplayYaw(slot);
+}
+
+export function getSlotReplayYaw(slot: F2lSolutionReview["slots"][number]): number {
   return { FR: -35, FL: 35, BL: 145, BR: -145 }[slot];
 }
 

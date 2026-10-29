@@ -1,13 +1,12 @@
 /** 将一次完成解法的运行时数据压缩为可持久化成绩记录。 */
 
-import type { AnalysisInput, CaseAlgorithmReference } from "../../src-shared/analysis-types.ts";
+import type { AnalysisInput, BlockPracticeMode, CaseAlgorithmReference } from "../../src-shared/analysis-types.ts";
+import { isBlockPracticeComplete } from "./block-practice.ts";
 import { calculateCrossMetrics } from "./cross-metrics.ts";
 import { getCfopPhase } from "./cstimer-cfop.ts";
 import type { CompletedSolveAnalysis } from "./completed-solve-analysis.ts";
 import type { InspectionPenalty } from "./inspection-rules.ts";
 import type { PhysicalCubeState } from "./solve-validation.ts";
-
-export type BlockPracticeMode = "cross" | "f2l" | "cross-f2l";
 
 export interface CompletedSolveMove {
   move: string;
@@ -45,7 +44,8 @@ export interface CompletedSolveRecord {
 export function buildCompletedSolveRecord(source: CompletedSolveRecordInput): CompletedSolveRecord {
   const { analysis, moves, totalDuration } = source;
   const formulaPracticeSucceeded = isFormulaPracticeSucceeded(source);
-  const blockPracticeSucceeded = Boolean(source.blockPractice?.completed && analysis.reliableMoveStream);
+  const blockPracticeSucceeded = Boolean(source.blockPractice?.completed && analysis.reliableMoveStream
+    && isBlockPracticeComplete(source.blockPractice.mode, analysis.validation.finalFacelets));
   const input: AnalysisInput = {
     completedAt: source.completedAt,
     deviceName: source.deviceName || "未标识魔方",

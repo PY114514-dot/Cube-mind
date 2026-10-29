@@ -18,6 +18,10 @@ export function buildSolveResultFeedback(current: AnalysisInput, history: Analys
   if (current.practiceKind === "review") {
     return { label: "原题复习", detail: "单独保存，不计入常规 PB、AO 或 AI 实战基准。", isPersonalBest: false };
   }
+  if (current.practiceMode) {
+    return { label: current.practiceOutcome === "success" ? "专项目标完成" : "专项未完成",
+      detail: "单独保存，不计入常规 PB、AO 或 AI 实战基准。", isPersonalBest: false };
+  }
   if (!resolvePersistedSolveTrust(current).scoreEligible) {
     return { label: "本把不计入成绩", detail: "设备数据未通过校验，不参与 PB 和 AO 统计。", isPersonalBest: false };
   }
