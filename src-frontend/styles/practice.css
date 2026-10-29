@@ -100,7 +100,11 @@
 .settings-toggle input { width: auto; }
 
 /* ===== 公式库弹窗 ===== */
-/* 筛选栏吸顶：滚动容器是 .modal-content，翻公式时筛选条件始终可见。 */
+/* 标题与关闭按钮留在滚动区外，长列表和吸顶筛选栏只在正文中滚动。 */
+#library-modal .modal-content { display: flex; flex-direction: column; overflow: hidden; }
+#library-modal .modal-header { flex-shrink: 0; gap: 12px; margin-bottom: 12px; }
+#library-modal .close-btn { flex-shrink: 0; width: 44px; height: 44px; min-height: 44px; }
+.library-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .library-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; margin-bottom: 12px; position: sticky; top: 0; z-index: 6; background: var(--card); padding: 10px; border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.06); }
 .library-toolbar input, .library-toolbar select { width: 100%; background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 9px 10px; font-size: 13px; }
 .library-toggle { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; background: var(--card); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; font-size: 13px; white-space: nowrap; }

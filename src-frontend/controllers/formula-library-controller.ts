@@ -76,6 +76,9 @@ export class FormulaLibraryController {
       this.staticCubePreviews.destroy();
       this.els.libraryModal.classList.remove("open");
     };
+    this.els.libraryModal.addEventListener("click", (event) => {
+      if (event.target === this.els.libraryModal) this.els.btnCloseLibrary.click();
+    });
     // 解法切换与展开/收起用事件委托：展开是原地改卡片 DOM，逐次重建后重新绑定会丢失。
     this.els.libraryContent.addEventListener("click", (event) => {
       const target = event.target;

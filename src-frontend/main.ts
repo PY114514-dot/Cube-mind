@@ -325,7 +325,7 @@ diagnosticsController.init();
 const keyboardShortcutsController = createKeyboardShortcutsController(
   {
     btnStop: els.btnStop,
-    libraryModal: els.libraryModal,
+    btnCloseLibrary: els.btnCloseLibrary,
     practiceModeModal: els.practiceModeModal,
     practiceModal: els.practiceModal,
   },

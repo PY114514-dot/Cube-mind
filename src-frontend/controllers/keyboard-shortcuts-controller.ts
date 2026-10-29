@@ -11,7 +11,7 @@ import type { Timer } from "../core/timer.ts";
 
 export interface KeyboardShortcutsElements {
   btnStop: HTMLButtonElement;
-  libraryModal: HTMLDivElement;
+  btnCloseLibrary: HTMLButtonElement;
   practiceModeModal: HTMLDivElement;
   practiceModal: HTMLDivElement;
 }
@@ -43,7 +43,7 @@ export function createKeyboardShortcutsController(
         els.btnStop.click();
       }
       if (e.code === "Escape") {
-        els.libraryModal.classList.remove("open");
+        els.btnCloseLibrary.click();
         closeResultModals();
         els.practiceModeModal.classList.remove("open");
         els.practiceModal.classList.remove("open");
